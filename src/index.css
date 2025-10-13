@@ -2,6 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
+
 /* Bạn có thể thêm style custom dưới đây nếu cần */
 body {
   font-family: 'Inter', sans-serif;
