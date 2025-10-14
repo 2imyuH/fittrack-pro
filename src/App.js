@@ -22,6 +22,72 @@ const WEEKDAYS = [
   { id: 6, name: 'Thứ 7', short: 'T7' },
   { id: 0, name: 'Chủ nhật', short: 'CN' }
 ];
+export function calculateFlexibleStreak(currentUser, workouts, weekStartDate = null) {
+  if (!currentUser) return 0;
+
+  // Lọc các buổi tập hoàn thành
+  const userWorkouts = workouts
+    .filter(w => w.userId === currentUser.id && w.status === 'completed')
+    .map(w => {
+      const d = new Date(w.date);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    })
+    .sort((a, b) => a - b);
+
+  if (userWorkouts.length === 0) return 0;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const scheduledDays = currentUser.weeklySchedule || [1, 3, 5];
+  const workoutSet = new Set(userWorkouts.map(d => d.toISOString().split('T')[0]));
+
+  // Xác định tuần hiện tại hoặc từ ngày bắt đầu do người dùng chọn
+  const startOfWeek = weekStartDate
+    ? new Date(weekStartDate)
+    : new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay() + 1);
+  startOfWeek.setHours(0, 0, 0, 0);
+
+  let streak = 0;
+  
+  // Tìm ngày tập gần nhất để biết "hiện tại" đến đâu
+  const lastWorkoutDate = userWorkouts.length > 0 
+    ? userWorkouts[userWorkouts.length - 1] 
+    : startOfWeek;
+
+  const dayCursor = new Date(startOfWeek);
+
+  while (dayCursor <= lastWorkoutDate) {
+    const dayStr = dayCursor.toISOString().split('T')[0];
+    const dayOfWeek = dayCursor.getDay();
+    const isTargetDay = scheduledDays.includes(dayOfWeek);
+    const didWorkout = workoutSet.has(dayStr);
+
+    if (isTargetDay && !didWorkout) {
+      // ❌ Bỏ ngày mục tiêu (và đã qua ngày đó) → reset streak về 0
+      streak = 0;
+    } else if (didWorkout) {
+      // ✅ Có đi tập → tăng streak
+      streak += 1;
+    }
+
+    dayCursor.setDate(dayCursor.getDate() + 1);
+  }
+
+  return streak;
+}
+
+
+// Hàm phụ tính số tuần trong năm
+function getWeekNumber(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+}
+
 function CalendarGrid({ selectedMonth, workouts, onDateClick }) {
   const getDaysInMonth = (yearMonth) => {
     const [year, month] = yearMonth.split('-').map(Number);
@@ -110,85 +176,16 @@ function CalendarGrid({ selectedMonth, workouts, onDateClick }) {
     </div>
   );
 }
-function StreakComparison({ users, compareUsers }) {
-  const selectedUsers = compareUsers.length > 0 
-    ? users.filter(u => compareUsers.includes(u.id))
-    : users;
-
-  const streakData = selectedUsers.map(user => ({
-    name: user.name,
-    avatar: user.avatar,
-    currentStreak: user.streakData?.currentStreak || 0,
-    longestStreak: user.streakData?.longestStreak || 0,
-    recoveryChances: user.streakData?.recoveryChances || 3
-  }));
-
-  return (
-    <div className="bg-white rounded-xl shadow-sm border p-6">
-      <h3 className="text-lg font-semibold mb-4">So Sánh Streak</h3>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div>
-          <h4 className="text-sm font-medium text-gray-600 mb-3">Streak Hiện Tại</h4>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={streakData} layout="horizontal">
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis type="number" />
-              <YAxis dataKey="name" type="category" width={80} />
-              <Tooltip />
-              <Bar dataKey="currentStreak" fill="#f97316" name="Tuần" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div>
-          <h4 className="text-sm font-medium text-gray-600 mb-3">Kỷ Lục Streak</h4>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={streakData} layout="horizontal">
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis type="number" />
-              <YAxis dataKey="name" type="category" width={80} />
-              <Tooltip />
-              <Bar dataKey="longestStreak" fill="#eab308" name="Tuần" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div>
-          <h4 className="text-sm font-medium text-gray-600 mb-3">Cơ Hội Khôi Phục</h4>
-          <div className="space-y-3">
-            {streakData.map(user => (
-              <div key={user.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">{user.avatar}</span>
-                  <span className="font-medium text-sm">{user.name}</span>
-                </div>
-                <div className="flex gap-1">
-                  {[...Array(3)].map((_, i) => (
-                    <div 
-                      key={i}
-                      className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                        i < user.recoveryChances ? 'bg-purple-500 text-white' : 'bg-gray-200 text-gray-400'
-                      }`}
-                    >
-                      💎
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Leaderboard({ users, workouts, statsRange, compareUsers }) {
-  const getDateRange = (months) => {
-    const today = new Date();
-    const startDate = new Date(today);
-    startDate.setMonth(today.getMonth() - months);
-    return { start: startDate.toISOString().split('T')[0], end: today.toISOString().split('T')[0] };
+function Leaderboard({ users, workouts, selectedMonth, statsRange, compareUsers }) {
+  const getDateRange = () => {
+    const [yearStart, monthStart] = selectedMonth.split('-').map(Number);
+    const [yearEnd, monthEnd] = statsRange.split('-').map(Number);
+    
+    const start = `${yearStart}-${String(monthStart).padStart(2, '0')}-01`;
+    const endDate = new Date(yearEnd, monthEnd, 0);
+    const end = `${yearEnd}-${String(monthEnd).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+    
+    return { start, end };
   };
 
   const range = getDateRange(statsRange);
@@ -197,22 +194,28 @@ function Leaderboard({ users, workouts, statsRange, compareUsers }) {
     : users;
 
   const leaderboardData = selectedUsers.map(user => {
-    const userWorkouts = workouts.filter(w => 
-      w.userId === user.id && 
-      w.date >= range.start && 
-      w.date <= range.end && 
-      w.status === 'completed'
+    // Lọc buổi tập hoàn thành trong khoảng thời gian đang xem
+    const userWorkouts = workouts.filter(
+      w =>
+        w.userId === user.id &&
+        w.date >= range.start &&
+        w.date <= range.end &&
+        w.status === 'completed'
     );
-    
+
+    // ---- Dùng chung hàm calculateFlexibleStreak ----
+    const calculatedStreak = calculateFlexibleStreak(user, workouts);
+
     return {
       id: user.id,
       name: user.name,
       avatar: user.avatar,
       workoutCount: userWorkouts.length,
       totalDuration: userWorkouts.reduce((sum, w) => sum + (w.duration || 0), 0),
-      currentStreak: user.streakData?.currentStreak || 0,
+      currentStreak: calculatedStreak,
       longestStreak: user.streakData?.longestStreak || 0,
-      score: userWorkouts.length * 10 + (user.streakData?.currentStreak || 0) * 50
+      recoveryChances: user.streakData?.recoveryChances || 3,
+      score: userWorkouts.length * 10 + calculatedStreak * 50
     };
   }).sort((a, b) => b.score - a.score);
 
@@ -282,7 +285,7 @@ function MainApp({ currentUser, setCurrentUser, users, setUsers, workouts, setWo
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [saveStatus, setSaveStatus] = useState('');
-  const [statsRange, setStatsRange] = useState(1);
+  const [statsRange, setStatsRange] = useState(new Date().toISOString().slice(0, 7));
   const [compareUsers, setCompareUsers] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -293,13 +296,12 @@ function MainApp({ currentUser, setCurrentUser, users, setUsers, workouts, setWo
   const [showStreakInfo, setShowStreakInfo] = useState(false);
   const [newWorkout, setNewWorkout] = useState({ date: '', type: 'Gym', duration: 60, notes: '', status: 'completed', muscleGroups: [] });
   const [profileEdit, setProfileEdit] = useState({ name: '', phone: '', goal: 16, avatar: '👤', weeklySchedule: [] });
-  useEffect(() => {
-    if (users.length > 0) {
-      const timeoutId = setTimeout(() => saveDataToAPI(), 1000);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [workouts, users]);
-
+useEffect(() => {
+  if (users.length > 0) {
+    const timeoutId = setTimeout(() => saveDataToAPI(), 1000);
+    return () => clearTimeout(timeoutId);
+  }
+}, [workouts, users]);
   const saveDataToAPI = async () => {
     try {
       setSaveStatus('Đang lưu...');
@@ -320,108 +322,44 @@ useEffect(() => {
   console.log('currentUser:', currentUser?.name);
   console.log('workouts count:', workouts.length);
 
-  if (!currentUser) {
-    console.log('❌ No current user');
-    return;
-  }
+  if (!currentUser) return;
 
-  const calculateStreak = () => {
-    console.log('\n🔥 === CALCULATING FLEXIBLE STREAK ===');
+  console.log('\n🔥 === CALCULATING FLEXIBLE STREAK ===');
 
-    const userWorkouts = workouts.filter(
-      w => w.userId === currentUser.id && w.status === 'completed'
+  const streak = calculateFlexibleStreak(currentUser, workouts);
+  console.log('🏆 Calculated streak:', streak);
+
+  const currentStreak = currentUser.streakData?.currentStreak || 0;
+
+  if (streak !== currentStreak) {
+    console.log('💾 Updating streak from', currentStreak, '→', streak);
+
+    const longestStreak = Math.max(
+      streak,
+      currentUser.streakData?.longestStreak || 0
     );
 
-    if (userWorkouts.length === 0) {
-      console.log('❌ No workouts found, streak = 0');
-      return;
-    }
+    const updatedUser = {
+      ...currentUser,
+      streakData: {
+        ...currentUser.streakData,
+        currentStreak: streak,
+        longestStreak,
+        lastUpdated: new Date().toISOString(),
+      },
+    };
 
-    // Chuẩn hóa ngày tập
-    const workoutDates = userWorkouts
-      .map(w => {
-        const d = new Date(w.date);
-        d.setHours(0, 0, 0, 0);
-        return d;
-      })
-      .sort((a, b) => a - b);
+    setCurrentUser(updatedUser);
+    setUsers(prev =>
+      prev.map(u => (u.id === updatedUser.id ? updatedUser : u))
+    );
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    console.log('✅ Streak updated successfully!');
+  } else {
+    console.log('ℹ️ Streak unchanged, no update needed');
+  }
 
-    const scheduledDays = currentUser.weeklySchedule || [1, 3, 5];
-    console.log('📋 Weekly schedule:', scheduledDays);
-
-    // Tạo Set các ngày đã tập
-    const workoutSet = new Set(workoutDates.map(d => d.toISOString().split('T')[0]));
-
-    let streak = 0;
-    let lastWorkoutDate = null;
-
-    // Lặp qua tất cả ngày tập (tăng streak mỗi lần)
-    for (let i = 0; i < workoutDates.length; i++) {
-      const date = workoutDates[i];
-      if (!lastWorkoutDate) {
-        streak = 1;
-      } else {
-        const diffDays = Math.floor((date - lastWorkoutDate) / (1000 * 60 * 60 * 24));
-        // Không quan trọng khoảng cách, chỉ cần tập là cộng
-        streak += 1;
-      }
-      lastWorkoutDate = date;
-    }
-
-    // ✅ Kiểm tra xem có bỏ lỡ ngày trong lịch tập không
-    // => Nếu có ít nhất một ngày trong schedule mà không tập => reset streak
-    const firstWorkout = workoutDates[0];
-    const daysToCheck = [];
-    const current = new Date(firstWorkout);
-
-    while (current <= today) {
-      const dayStr = current.toISOString().split('T')[0];
-      const dayOfWeek = current.getDay();
-      if (scheduledDays.includes(dayOfWeek)) {
-        daysToCheck.push(dayStr);
-      }
-      current.setDate(current.getDate() + 1);
-    }
-
-    console.log('📅 Checking scheduled days:', daysToCheck);
-
-    const missedDay = daysToCheck.find(day => !workoutSet.has(day));
-    if (missedDay) {
-      console.log(`❌ Missed scheduled day: ${missedDay} → reset streak`);
-      streak = 0;
-    }
-
-    console.log('\n🏆 FINAL STREAK:', streak);
-    const currentStreak = currentUser.streakData?.currentStreak || 0;
-
-    if (streak !== currentStreak) {
-      console.log('💾 Updating streak from', currentStreak, 'to', streak);
-
-      const longestStreak = Math.max(streak, currentUser.streakData?.longestStreak || 0);
-      const updatedUser = {
-        ...currentUser,
-        streakData: {
-          currentStreak: streak,
-          longestStreak,
-          lastUpdated: new Date().toISOString(),
-          recoveryChances: currentUser.streakData?.recoveryChances ?? 3
-        }
-      };
-
-      setCurrentUser(updatedUser);
-      setUsers(prev => prev.map(u => (u.id === updatedUser.id ? updatedUser : u)));
-      console.log('✅ Streak updated successfully!');
-    } else {
-      console.log('ℹ️ Streak unchanged, no update needed');
-    }
-
-    console.log('=== END CALCULATION ===\n');
-  };
-
-  calculateStreak();
+  console.log('=== END CALCULATION ===\n');
 }, [workouts, currentUser?.id]);
 
   const handleAddWorkout = () => {
@@ -470,19 +408,29 @@ useEffect(() => {
     setEditingWorkout({ ...editingWorkout, muscleGroups: current.includes(group) ? current.filter(g => g !== group) : [...current, group] });
   };
 
-  const getDateRange = (months) => {
-    const today = new Date();
-    const startDate = new Date(today);
-    startDate.setMonth(today.getMonth() - months);
-    return { start: startDate.toISOString().split('T')[0], end: today.toISOString().split('T')[0] };
+  const getDateRange = () => {
+    const [yearStart, monthStart] = selectedMonth.split('-').map(Number);
+    const [yearEnd, monthEnd] = statsRange.split('-').map(Number);
+    
+    const start = `${yearStart}-${String(monthStart).padStart(2, '0')}-01`;
+    const endDate = new Date(yearEnd, monthEnd, 0); // Ngày cuối cùng của tháng
+    const end = `${yearEnd}-${String(monthEnd).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+    
+    return { start, end };
   };
 
   const stats = useMemo(() => {
     if (!currentUser) return { completed: 0, missed: 0, percentage: 0, typeCount: {}, muscleCount: {}, rangeWorkouts: [] };
-    const range = getDateRange(statsRange);
+    const range = getDateRange();
+    
+    // Tính số tháng giữa 2 khoảng
+    const [yearStart, monthStart] = selectedMonth.split('-').map(Number);
+    const [yearEnd, monthEnd] = statsRange.split('-').map(Number);
+    const monthsDiff = (yearEnd - yearStart) * 12 + (monthEnd - monthStart) + 1;
+    
     const rangeWorkouts = workouts.filter(w => w.userId === currentUser.id && w.date >= range.start && w.date <= range.end);
     const completed = rangeWorkouts.filter(w => w.status === 'completed').length;
-    const percentage = Math.round((completed / (currentUser.goal * statsRange)) * 100);
+    const percentage = Math.round((completed / (currentUser.goal * monthsDiff)) * 100);
     const typeCount = {}, muscleCount = {};
     rangeWorkouts.forEach(w => {
       if (w.status === 'completed') {
@@ -491,7 +439,7 @@ useEffect(() => {
       }
     });
     return { completed, percentage, typeCount, muscleCount, rangeWorkouts };
-  }, [workouts, currentUser, statsRange]);
+  }, [workouts, users, selectedMonth, statsRange, compareUsers]);
 
   const weekProgress = useMemo(() => {
     if (!currentUser) return { completed: [], remaining: [], progress: 0, scheduledDays: [] };
@@ -508,7 +456,7 @@ useEffect(() => {
 
   const chartData = useMemo(() => {
     if (!currentUser) return [];
-    const range = getDateRange(statsRange);
+    const range = getDateRange();
     const data = [];
     const startDate = new Date(range.start);
     const endDate = new Date(range.end);
@@ -520,17 +468,34 @@ useEffect(() => {
       data.push({ week: `${d.getDate()}/${d.getMonth() + 1}`, workouts: weekWorkouts.length, duration: weekWorkouts.reduce((sum, w) => sum + (w.duration || 0), 0) });
     }
     return data;
-  }, [workouts, currentUser, statsRange]);
-
-  const comparisonStats = useMemo(() => {
-    const range = getDateRange(statsRange);
-    const selectedUsers = compareUsers.length > 0 ? compareUsers : users.map(u => u.id);
-    return selectedUsers.map(userId => {
-      const user = users.find(u => u.id === userId);
-      const userWorkouts = workouts.filter(w => w.userId === userId && w.date >= range.start && w.date <= range.end && w.status === 'completed');
-      return { name: user?.name || 'Unknown', workouts: userWorkouts.length, totalDuration: userWorkouts.reduce((sum, w) => sum + (w.duration || 0), 0), avatar: user?.avatar || '👤' };
-    });
-  }, [workouts, users, statsRange, compareUsers]);
+  }, [workouts, currentUser, selectedMonth, statsRange]);
+const comparisonStats = useMemo(() => {
+  const [yearStart, monthStart] = selectedMonth.split('-').map(Number);
+  const [yearEnd, monthEnd] = statsRange.split('-').map(Number);
+  
+  const start = `${yearStart}-${String(monthStart).padStart(2, '0')}-01`;
+  const endDate = new Date(yearEnd, monthEnd, 0);
+  const end = `${yearEnd}-${String(monthEnd).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+  
+  const selectedUsers = compareUsers.length > 0 ? compareUsers : users.map(u => u.id);
+  
+  return selectedUsers.map(userId => {
+    const user = users.find(u => u.id === userId);
+    const userWorkouts = workouts.filter(w => 
+      w.userId === userId && 
+      w.date >= start && 
+      w.date <= end && 
+      w.status === 'completed'
+    );
+    
+    return { 
+      name: user?.name || 'Unknown', 
+      workouts: userWorkouts.length, 
+      totalDuration: userWorkouts.reduce((sum, w) => sum + (w.duration || 0), 0), 
+      avatar: user?.avatar || '👤' 
+    };
+  });
+}, [workouts, users, selectedMonth, statsRange, compareUsers]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -573,146 +538,149 @@ useEffect(() => {
               {tab === 'profile' && <User className="w-5 h-5" />}
               {tab === 'dashboard' && 'Dashboard'}
               {tab === 'calendar' && 'Lịch Tập'}
-              {tab === 'compare' && 'So Sánh'}
+              {tab === 'compare' && 'Thống kê'}
               {tab === 'profile' && 'Profile'}
             </button>
           ))}
         </div>
 
-{activeTab === 'dashboard' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-xl shadow-sm border p-4">
-              <div className="flex items-center gap-4">
-                <label className="text-sm font-medium">Tháng:</label>
-                <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
-              </div>
+    {activeTab === 'dashboard' && (
+      <div className="space-y-6">
+      <div className="bg-white rounded-xl shadow-sm border p-4">
+        <div className="flex items-center gap-4 flex-wrap">
+          <label className="text-sm font-medium">Từ tháng:</label>
+          <input 
+            type="month" 
+            value={selectedMonth} 
+            onChange={(e) => setSelectedMonth(e.target.value)} 
+            className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+          />
+          <label className="text-sm font-medium">Đến tháng:</label>
+          <input 
+            type="month" 
+            value={statsRange} 
+            onChange={(e) => setStatsRange(e.target.value)} 
+            className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+          />
+        </div>
+      </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl p-6 text-white shadow-lg">
+            <Target className="w-10 h-10 mb-3 opacity-80" />
+            <p className="text-blue-100 text-sm">Tiến Độ Tháng Này</p>
+            <div className="flex items-end gap-2 mt-2">
+              <h3 className="text-4xl font-bold">{stats.completed}</h3>
+              <span className="text-2xl font-medium mb-1">/ {currentUser.goal}</span>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl p-6 text-white shadow-lg">
-                <Target className="w-10 h-10 mb-3 opacity-80" />
-                <p className="text-blue-100 text-sm">Tiến Độ Tháng Này</p>
-                <div className="flex items-end gap-2 mt-2">
-                  <h3 className="text-4xl font-bold">{stats.completed}</h3>
-                  <span className="text-2xl font-medium mb-1">/ {currentUser.goal}</span>
-                </div>
-                <div className="mt-3 bg-white/20 rounded-full h-2">
-                  <div className="bg-white rounded-full h-2 transition-all" style={{width: `${Math.min(stats.percentage, 100)}%`}}></div>
-                </div>
-                <p className="text-blue-100 text-sm mt-2">{stats.percentage}% hoàn thành</p>
-              </div>
-
-              <div className="bg-gradient-to-br from-orange-500 to-red-500 rounded-xl p-6 text-white shadow-lg">
-                <Flame className="w-10 h-10 mb-3 opacity-80" />
-                <p className="text-orange-100 text-sm">Streak Hiện Tại</p>
-                <h3 className="text-4xl font-bold mt-2">{currentUser.streakData?.currentStreak || 0}</h3>
-                <p className="text-orange-100 text-xs mt-1">tuần liên tiếp</p>
-                <div className="mt-3 flex gap-1">
-                  {[...Array(3)].map((_, i) => (
-                    <div 
-                      key={i}
-                      className={`flex-1 h-1.5 rounded-full ${
-                        i < (currentUser.streakData?.recoveryChances || 3) ? 'bg-white' : 'bg-white/30'
-                      }`}
-                    />
-                  ))}
-                </div>
-                <p className="text-orange-100 text-xs mt-2">{currentUser.streakData?.recoveryChances || 3}/3 cơ hội</p>
-              </div>
-
-              <div className="bg-gradient-to-br from-yellow-400 to-orange-400 rounded-xl p-6 text-white shadow-lg">
-                <Award className="w-10 h-10 mb-3 opacity-80" />
-                <p className="text-yellow-100 text-sm">Kỷ Lục Streak</p>
-                <h3 className="text-4xl font-bold mt-2">{currentUser.streakData?.longestStreak || 0}</h3>
-                <p className="text-yellow-100 text-xs mt-1">tuần dài nhất</p>
-                <p className="text-yellow-100 text-sm mt-3">Tuần này: {weekProgress.completed.length}/{weekProgress.scheduledDays?.length || 0}</p>
-              </div>
-
-              <div className="bg-gradient-to-br from-pink-500 to-rose-600 rounded-xl p-6 text-white shadow-lg">
-                <Calendar className="w-10 h-10 mb-3 opacity-80" />
-                <p className="text-pink-100 text-sm">Buổi Bỏ Lỡ</p>
-                <h3 className="text-4xl font-bold mt-2">{Math.max(0, currentUser.goal - stats.completed)}</h3>
-                <p className="text-pink-100 text-xs mt-1">so với mục tiêu</p>
-                <p className="text-pink-100 text-sm mt-3">Cần tập thêm {Math.max(0, currentUser.goal - stats.completed)} buổi</p>
-              </div>
+            <div className="mt-3 bg-white/20 rounded-full h-2">
+              <div className="bg-white rounded-full h-2 transition-all" style={{width: `${Math.min(stats.percentage, 100)}%`}}></div>
             </div>
+            <p className="text-blue-100 text-sm mt-2">{stats.percentage}% hoàn thành</p>
+          </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white rounded-xl shadow-sm border p-6">
-                <h3 className="text-lg font-semibold mb-4">Phân Bổ Loại Tập</h3>
-                {Object.keys(stats.typeCount).length > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                      <Pie data={Object.entries(stats.typeCount).map(([type, count]) => ({name: type, value: count}))} cx="50%" cy="50%" labelLine={false} label={({name, percent}) => `${name} ${(percent * 100).toFixed(0)}%`} outerRadius={100} fill="#8884d8" dataKey="value">
-                        {Object.keys(stats.typeCount).map((_, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-[300px] flex items-center justify-center text-gray-400">Chưa có dữ liệu</div>
-                )}
-              </div>
+          <div className="rounded-xl p-6 text-white shadow-lg" style={{background: 'linear-gradient(to bottom right, rgb(249, 115, 22), rgb(239, 68, 68))'}}>
+            <Flame className="w-10 h-10 mb-3 opacity-80" />
+            <p className="text-orange-100 text-sm">Streak Hiện Tại</p>
+            <h3 className="text-4xl font-bold mt-2">{currentUser.streakData?.currentStreak || 0}</h3>
+            <p className="text-orange-100 text-xs mt-1">ngày liên tiếp</p>
+            <div className="mt-3 flex gap-1">
+              {[...Array(3)].map((_, i) => (
+                <div 
+                  key={i}
+                  className={`flex-1 h-1.5 rounded-full ${
+                    i < (currentUser.streakData?.recoveryChances || 3) ? 'bg-white' : 'bg-white/30'
+                  }`}
+                />
+              ))}
+            </div>
+            <p className="text-orange-100 text-xs mt-2">Kỷ lục: {currentUser.streakData?.longestStreak || 0} ngày</p>
+          </div>
 
-              <div className="bg-white rounded-xl shadow-sm border p-6">
-                <h3 className="text-lg font-semibold mb-4">Nhóm Cơ Đã Tập</h3>
-                {Object.keys(stats.muscleCount).length > 0 ? (
-                  <div className="space-y-3">
-                    {Object.entries(stats.muscleCount).sort((a, b) => b[1] - a[1]).map(([muscle, count], index) => (
-                      <div key={muscle}>
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="text-sm font-medium">{muscle}</span>
-                          <span className="text-sm text-gray-600">{count} lần</span>
-                        </div>
-                        <div className="bg-gray-200 rounded-full h-2">
-                          <div className="rounded-full h-2 transition-all" style={{width: `${(count / Math.max(...Object.values(stats.muscleCount))) * 100}%`, backgroundColor: COLORS[index % COLORS.length]}}></div>
-                        </div>
-                      </div>
+          <div className="bg-gradient-to-br from-pink-500 to-rose-600 rounded-xl p-6 text-white shadow-lg">
+            <Calendar className="w-10 h-10 mb-3 opacity-80" />
+            <p className="text-pink-100 text-sm">Buổi Bỏ Lỡ</p>
+            <h3 className="text-4xl font-bold mt-2">{Math.max(0, currentUser.goal - stats.completed)}</h3>
+            <p className="text-pink-100 text-xs mt-1">so với mục tiêu</p>
+            <p className="text-pink-100 text-sm mt-3">Cần tập thêm {Math.max(0, currentUser.goal - stats.completed)} buổi</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-white rounded-xl shadow-sm border p-6">
+            <h3 className="text-lg font-semibold mb-4">Phân Bổ Loại Tập</h3>
+            {Object.keys(stats.typeCount).length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie data={Object.entries(stats.typeCount).map(([type, count]) => ({name: type, value: count}))} cx="50%" cy="50%" labelLine={false} label={({name, percent}) => `${name} ${(percent * 100).toFixed(0)}%`} outerRadius={100} fill="#8884d8" dataKey="value">
+                    {Object.keys(stats.typeCount).map((_, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
-                  </div>
-                ) : (
-                  <div className="h-[300px] flex items-center justify-center text-gray-400">Chưa có dữ liệu</div>
-                )}
-              </div>
-            </div>
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[300px] flex items-center justify-center text-gray-400">Chưa có dữ liệu</div>
+            )}
+          </div>
 
-            <div className="bg-white rounded-xl shadow-sm border p-6">
-              <h3 className="text-lg font-semibold mb-4">Lịch Sử Tập Luyện</h3>
-              <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                {stats.rangeWorkouts.sort((a, b) => b.date.localeCompare(a.date)).map(workout => (
-                  <div key={workout.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                        <span className="text-xl">{workout.type === 'Gym' ? '💪' : workout.type === 'Cardio' ? '🏃' : workout.type === 'Swimming' ? '🏊' : '⚽'}</span>
-                      </div>
-                      <div>
-                        <p className="font-medium">{workout.type}</p>
-                        <p className="text-sm text-gray-600">{new Date(workout.date).toLocaleDateString('vi-VN')} • {workout.duration} phút</p>
-                        {workout.muscleGroups && workout.muscleGroups.length > 0 && (
-                          <p className="text-xs text-gray-500 mt-1">{workout.muscleGroups.join(', ')}</p>
-                        )}
-                      </div>
+          <div className="bg-white rounded-xl shadow-sm border p-6">
+            <h3 className="text-lg font-semibold mb-4">Nhóm Cơ Đã Tập</h3>
+            {Object.keys(stats.muscleCount).length > 0 ? (
+              <div className="space-y-3">
+                {Object.entries(stats.muscleCount).sort((a, b) => b[1] - a[1]).map(([muscle, count], index) => (
+                  <div key={muscle}>
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-sm font-medium">{muscle}</span>
+                      <span className="text-sm text-gray-600">{count} lần</span>
                     </div>
-                    <div className="flex gap-1">
-                      <button onClick={() => { setEditingWorkout({...workout}); setShowEditModal(true); }} className="p-2 hover:bg-gray-200 rounded transition">
-                        <Edit2 className="w-4 h-4 text-blue-600" />
-                      </button>
-                      <button onClick={() => handleDeleteWorkout(workout.id)} className="p-2 hover:bg-red-100 rounded transition">
-                        <Trash2 className="w-4 h-4 text-red-600" />
-                      </button>
+                    <div className="bg-gray-200 rounded-full h-2">
+                      <div className="rounded-full h-2 transition-all" style={{width: `${(count / Math.max(...Object.values(stats.muscleCount))) * 100}%`, backgroundColor: COLORS[index % COLORS.length]}}></div>
                     </div>
                   </div>
                 ))}
-                {stats.rangeWorkouts.length === 0 && (
-                  <div className="text-center py-8 text-gray-400">Chưa có buổi tập nào trong tháng này</div>
-                )}
               </div>
-            </div>
+            ) : (
+              <div className="h-[300px] flex items-center justify-center text-gray-400">Chưa có dữ liệu</div>
+            )}
           </div>
-        )}
+        </div>
 
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+          <h3 className="text-lg font-semibold mb-4">Lịch Sử Tập Luyện</h3>
+          <div className="space-y-2 max-h-[400px] overflow-y-auto">
+            {stats.rangeWorkouts.sort((a, b) => b.date.localeCompare(a.date)).map(workout => (
+              <div key={workout.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <span className="text-xl">{workout.type === 'Gym' ? '💪' : workout.type === 'Cardio' ? '🏃' : workout.type === 'Swimming' ? '🏊' : '⚽'}</span>
+                  </div>
+                  <div>
+                    <p className="font-medium">{workout.type}</p>
+                    <p className="text-sm text-gray-600">{new Date(workout.date).toLocaleDateString('vi-VN')} • {workout.duration} phút</p>
+                    {workout.muscleGroups && workout.muscleGroups.length > 0 && (
+                      <p className="text-xs text-gray-500 mt-1">{workout.muscleGroups.join(', ')}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-1">
+                  <button onClick={() => { setEditingWorkout({...workout}); setShowEditModal(true); }} className="p-2 hover:bg-gray-200 rounded transition">
+                    <Edit2 className="w-4 h-4 text-blue-600" />
+                  </button>
+                  <button onClick={() => handleDeleteWorkout(workout.id)} className="p-2 hover:bg-red-100 rounded transition">
+                    <Trash2 className="w-4 h-4 text-red-600" />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {stats.rangeWorkouts.length === 0 && (
+              <div className="text-center py-8 text-gray-400">Chưa có buổi tập nào trong tháng này</div>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
         {activeTab === 'profile' && (
           <div className="space-y-6">
             <div className="bg-white rounded-xl shadow-sm border p-6">
@@ -756,42 +724,42 @@ useEffect(() => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="bg-gradient-to-br from-orange-500 to-red-500 rounded-xl p-6 text-white shadow-lg">
-                <Flame className="w-12 h-12 mb-3" />
-                <p className="text-orange-100 text-sm">Streak Hiện Tại</p>
-                <h3 className="text-4xl font-bold mt-1">{currentUser.streakData?.currentStreak || 0}</h3>
-                <p className="text-orange-100 text-xs mt-1">tuần liên tiếp</p>
-                <div className="mt-3 flex gap-1">
-                  {[...Array(3)].map((_, i) => (
-                    <div 
-                      key={i}
-                      className={`flex-1 h-1.5 rounded-full ${
-                        i < (currentUser.streakData?.recoveryChances || 3) ? 'bg-white' : 'bg-white/30'
-                      }`}
-                    />
-                  ))}
-                </div>
-              </div>
-              <div className="bg-gradient-to-br from-yellow-400 to-orange-400 rounded-xl p-6 text-white shadow-lg">
-                <Award className="w-12 h-12 mb-3" />
-                <p className="text-yellow-100 text-sm">Kỷ Lục Streak</p>
-                <h3 className="text-4xl font-bold mt-1">{currentUser.streakData?.longestStreak || 0}</h3>
-                <p className="text-yellow-100 text-xs mt-1">tuần dài nhất</p>
-              </div>
-              <div className="bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl p-6 text-white shadow-lg">
-                <Target className="w-12 h-12 mb-3" />
-                <p className="text-purple-100 text-sm">Cơ Hội Khôi Phục</p>
-                <h3 className="text-4xl font-bold mt-1">{currentUser.streakData?.recoveryChances || 3}</h3>
-                <p className="text-purple-100 text-xs mt-1">/ 3 lần trong tháng</p>
-              </div>
-              <div className="bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl p-6 text-white shadow-lg">
-                <Calendar className="w-12 h-12 mb-3" />
-                <p className="text-blue-100 text-sm">Tuần Này</p>
-                <h3 className="text-4xl font-bold mt-1">{weekProgress.completed.length}</h3>
-                <p className="text-blue-100 text-xs mt-1">/ {weekProgress.scheduledDays?.length || 0} ngày</p>
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="rounded-xl p-6 text-white shadow-lg" style={{background: 'linear-gradient(to bottom right, rgb(249, 115, 22), rgb(239, 68, 68))'}}>
+            <Flame className="w-12 h-12 mb-3" />
+            <p className="text-orange-100 text-sm">Streak Hiện Tại</p>
+            <h3 className="text-4xl font-bold mt-1">{currentUser.streakData?.currentStreak || 0}</h3>
+            <p className="text-orange-100 text-xs mt-1">ngày liên tiếp</p>
+            <div className="mt-3 flex gap-1">
+              {[...Array(3)].map((_, i) => (
+                <div 
+                  key={i}
+                  className={`flex-1 h-1.5 rounded-full ${
+                    i < (currentUser.streakData?.recoveryChances || 3) ? 'bg-white' : 'bg-white/30'
+                  }`}
+                />
+              ))}
             </div>
+          </div>
+            <div className="bg-gradient-to-br from-yellow-400 to-orange-400 rounded-xl p-6 text-white shadow-lg">
+              <Award className="w-12 h-12 mb-3" />
+              <p className="text-yellow-100 text-sm">Kỷ Lục Streak</p>
+              <h3 className="text-4xl font-bold mt-1">{currentUser.streakData?.longestStreak || 0}</h3>
+              <p className="text-yellow-100 text-xs mt-1">streak dài nhất</p>
+            </div>
+            <div className="bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl p-6 text-white shadow-lg">
+              <Target className="w-12 h-12 mb-3" />
+              <p className="text-purple-100 text-sm">Cơ Hội Khôi Phục</p>
+              <h3 className="text-4xl font-bold mt-1">{currentUser.streakData?.recoveryChances || 3}</h3>
+              <p className="text-purple-100 text-xs mt-1">/ 3 lần trong tháng</p>
+            </div>
+            <div className="bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl p-6 text-white shadow-lg">
+              <Calendar className="w-12 h-12 mb-3" />
+              <p className="text-blue-100 text-sm">Tuần Này</p>
+              <h3 className="text-4xl font-bold mt-1">{weekProgress.completed.length}</h3>
+              <p className="text-blue-100 text-xs mt-1">/ {weekProgress.scheduledDays?.length || 0} ngày</p>
+            </div>
+          </div>
 
             <div className="bg-white rounded-xl shadow-sm border p-6">
               <h3 className="text-lg font-semibold mb-4">Thống Kê Cá Nhân</h3>
@@ -850,24 +818,27 @@ useEffect(() => {
       )}
       {activeTab === 'compare' && (
         <div className="space-y-6 max-w-7xl mx-auto">
-          <div className="bg-white rounded-xl shadow-sm border p-4">
-            <div className="flex items-center gap-4">
-              <label className="text-sm font-medium">Khoảng thời gian:</label>
-              <select 
-                value={statsRange} 
-                onChange={(e) => setStatsRange(parseInt(e.target.value))}
-                className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              >
-                <option value={1}>1 tháng</option>
-                <option value={3}>3 tháng</option>
-                <option value={6}>6 tháng</option>
-                <option value={12}>12 tháng</option>
-              </select>
-            </div>
+        <div className="bg-white rounded-xl shadow-sm border p-4">
+          <div className="flex items-center gap-4 flex-wrap">
+            <label className="text-sm font-medium">Từ tháng:</label>
+            <input 
+              type="month" 
+              value={selectedMonth} 
+              onChange={(e) => setSelectedMonth(e.target.value)} 
+              className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+            />
+            <label className="text-sm font-medium">Đến tháng:</label>
+            <input 
+              type="month" 
+              value={statsRange} 
+              onChange={(e) => setStatsRange(e.target.value)} 
+              className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+            />
           </div>
+        </div>
 
           <div className="bg-white rounded-xl shadow-sm border p-4">
-            <label className="text-sm font-medium mb-3 block">Chọn thành viên để so sánh:</label>
+            <label className="text-sm font-medium mb-3 block">Chọn thành viên để thống kê:</label>
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => setCompareUsers([])}
@@ -902,7 +873,7 @@ useEffect(() => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-white rounded-xl shadow-sm border p-6">
-              <h3 className="text-lg font-semibold mb-4">So Sánh Số Buổi Tập</h3>
+              <h3 className="text-lg font-semibold mb-4">Thống Kê Số Buổi Tập</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={comparisonStats}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -916,7 +887,7 @@ useEffect(() => {
             </div>
 
             <div className="bg-white rounded-xl shadow-sm border p-6">
-              <h3 className="text-lg font-semibold mb-4">So Sánh Thời Gian Tập</h3>
+              <h3 className="text-lg font-semibold mb-4">Thống Kê Thời Gian Tập</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={comparisonStats}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -930,14 +901,10 @@ useEffect(() => {
             </div>
           </div>
 
-          <StreakComparison 
-            users={users}
-            compareUsers={compareUsers}
-          />
-
           <Leaderboard 
             users={users}
             workouts={workouts}
+            selectedMonth={selectedMonth}
             statsRange={statsRange}
             compareUsers={compareUsers}
           />
@@ -1152,7 +1119,7 @@ useEffect(() => {
               <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
                 <h4 className="font-semibold mb-2">📊 Trạng thái hiện tại:</h4>
                 <ul className="text-sm space-y-1 text-gray-700">
-                  <li>• Streak hiện tại: <strong>{currentUser.streakData?.currentStreak || 0} tuần</strong></li>
+                  <li>• Streak hiện tại: <strong>{currentUser.streakData?.currentStreak || 0} ngày</strong></li>
                   <li>• Kỷ lục: <strong>{currentUser.streakData?.longestStreak || 0} tuần</strong></li>
                   <li>• Cơ hội còn lại: <strong>{currentUser.streakData?.recoveryChances || 3}/3</strong></li>
                   <li>• Tuần này: <strong>{weekProgress.completed.length}/{weekProgress.scheduledDays?.length || 0} ngày</strong></li>
