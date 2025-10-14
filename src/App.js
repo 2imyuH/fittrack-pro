@@ -588,10 +588,10 @@ useEffect(() => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl p-6 text-white shadow-lg">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl p-6 text-white shadow-lg">
                 <Target className="w-10 h-10 mb-3 opacity-80" />
-                <p className="text-green-100 text-sm">Tiến Độ Tháng Này</p>
+                <p className="text-blue-100 text-sm">Tiến Độ Tháng Này</p>
                 <div className="flex items-end gap-2 mt-2">
                   <h3 className="text-4xl font-bold">{stats.completed}</h3>
                   <span className="text-2xl font-medium mb-1">/ {currentUser.goal}</span>
@@ -599,7 +599,7 @@ useEffect(() => {
                 <div className="mt-3 bg-white/20 rounded-full h-2">
                   <div className="bg-white rounded-full h-2 transition-all" style={{width: `${Math.min(stats.percentage, 100)}%`}}></div>
                 </div>
-                <p className="text-green-100 text-sm mt-2">{stats.percentage}% hoàn thành</p>
+                <p className="text-blue-100 text-sm mt-2">{stats.percentage}% hoàn thành</p>
               </div>
 
               <div className="bg-gradient-to-br from-orange-500 to-red-500 rounded-xl p-6 text-white shadow-lg">
@@ -607,15 +607,33 @@ useEffect(() => {
                 <p className="text-orange-100 text-sm">Streak Hiện Tại</p>
                 <h3 className="text-4xl font-bold mt-2">{currentUser.streakData?.currentStreak || 0}</h3>
                 <p className="text-orange-100 text-xs mt-1">tuần liên tiếp</p>
-                <p className="text-orange-100 text-sm mt-3">Kỷ lục: {currentUser.streakData?.longestStreak || 0} tuần</p>
+                <div className="mt-3 flex gap-1">
+                  {[...Array(3)].map((_, i) => (
+                    <div 
+                      key={i}
+                      className={`flex-1 h-1.5 rounded-full ${
+                        i < (currentUser.streakData?.recoveryChances || 3) ? 'bg-white' : 'bg-white/30'
+                      }`}
+                    />
+                  ))}
+                </div>
+                <p className="text-orange-100 text-xs mt-2">{currentUser.streakData?.recoveryChances || 3}/3 cơ hội</p>
               </div>
 
-              <div className="bg-gradient-to-br from-red-500 to-pink-500 rounded-xl p-6 text-white shadow-lg">
+              <div className="bg-gradient-to-br from-yellow-400 to-orange-400 rounded-xl p-6 text-white shadow-lg">
+                <Award className="w-10 h-10 mb-3 opacity-80" />
+                <p className="text-yellow-100 text-sm">Kỷ Lục Streak</p>
+                <h3 className="text-4xl font-bold mt-2">{currentUser.streakData?.longestStreak || 0}</h3>
+                <p className="text-yellow-100 text-xs mt-1">tuần dài nhất</p>
+                <p className="text-yellow-100 text-sm mt-3">Tuần này: {weekProgress.completed.length}/{weekProgress.scheduledDays?.length || 0}</p>
+              </div>
+
+              <div className="bg-gradient-to-br from-pink-500 to-rose-600 rounded-xl p-6 text-white shadow-lg">
                 <Calendar className="w-10 h-10 mb-3 opacity-80" />
-                <p className="text-red-100 text-sm">Buổi Bỏ Lỡ</p>
-                <h3 className="text-4xl font-bold mt-2">{currentUser.goal - stats.completed}</h3>
-                <p className="text-red-100 text-xs mt-1">so với mục tiêu</p>
-                <p className="text-red-100 text-sm mt-3">Cần tập thêm {Math.max(0, currentUser.goal - stats.completed)} buổi</p>
+                <p className="text-pink-100 text-sm">Buổi Bỏ Lỡ</p>
+                <h3 className="text-4xl font-bold mt-2">{Math.max(0, currentUser.goal - stats.completed)}</h3>
+                <p className="text-pink-100 text-xs mt-1">so với mục tiêu</p>
+                <p className="text-pink-100 text-sm mt-3">Cần tập thêm {Math.max(0, currentUser.goal - stats.completed)} buổi</p>
               </div>
             </div>
 
@@ -738,12 +756,22 @@ useEffect(() => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div className="bg-gradient-to-br from-orange-500 to-red-500 rounded-xl p-6 text-white shadow-lg">
                 <Flame className="w-12 h-12 mb-3" />
                 <p className="text-orange-100 text-sm">Streak Hiện Tại</p>
                 <h3 className="text-4xl font-bold mt-1">{currentUser.streakData?.currentStreak || 0}</h3>
                 <p className="text-orange-100 text-xs mt-1">tuần liên tiếp</p>
+                <div className="mt-3 flex gap-1">
+                  {[...Array(3)].map((_, i) => (
+                    <div 
+                      key={i}
+                      className={`flex-1 h-1.5 rounded-full ${
+                        i < (currentUser.streakData?.recoveryChances || 3) ? 'bg-white' : 'bg-white/30'
+                      }`}
+                    />
+                  ))}
+                </div>
               </div>
               <div className="bg-gradient-to-br from-yellow-400 to-orange-400 rounded-xl p-6 text-white shadow-lg">
                 <Award className="w-12 h-12 mb-3" />
@@ -756,6 +784,12 @@ useEffect(() => {
                 <p className="text-purple-100 text-sm">Cơ Hội Khôi Phục</p>
                 <h3 className="text-4xl font-bold mt-1">{currentUser.streakData?.recoveryChances || 3}</h3>
                 <p className="text-purple-100 text-xs mt-1">/ 3 lần trong tháng</p>
+              </div>
+              <div className="bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl p-6 text-white shadow-lg">
+                <Calendar className="w-12 h-12 mb-3" />
+                <p className="text-blue-100 text-sm">Tuần Này</p>
+                <h3 className="text-4xl font-bold mt-1">{weekProgress.completed.length}</h3>
+                <p className="text-blue-100 text-xs mt-1">/ {weekProgress.scheduledDays?.length || 0} ngày</p>
               </div>
             </div>
 
