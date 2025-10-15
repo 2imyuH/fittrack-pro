@@ -678,7 +678,7 @@ const comparisonStats = useMemo(() => {
             <p className="text-orange-100 text-xs mt-2">Kỷ lục: {currentUser.streakData?.longestStreak || 0} ngày</p>
           </div>
 
-          <div className="bg-gradient-to-br from-red-500 to-rose-600 rounded-xl p-6 text-white shadow-lg">
+        <div className="bg-gradient-to-br from-red-600 to-red-800 rounded-xl p-6 text-white shadow-lg">
             <Calendar className="w-10 h-10 mb-3 opacity-80" />
             <p className="text-pink-100 text-sm">Buổi Bỏ Lỡ</p>
             <h3 className="text-4xl font-bold mt-2">{Math.max(0, currentUser.goal - stats.completed)}</h3>
