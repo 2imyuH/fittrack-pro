@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TrendingUp } from 'lucide-react';
 
 const API_CONFIG = {
@@ -31,6 +31,126 @@ function LoginScreen({ onLogin, users, setUsers, workouts }) {
     }
   });
   const [registerStatus, setRegisterStatus] = useState('');
+  const [googleLoaded, setGoogleLoaded] = useState(false);
+
+  // Load Google Identity Services
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => setGoogleLoaded(true);
+    document.body.appendChild(script);
+
+    return () => {
+      if (document.body.contains(script)) {
+        document.body.removeChild(script);
+      }
+    };
+  }, []);
+
+  const handleGoogleLogin = async (response) => {
+    try {
+      // Decode JWT token to get user info
+      const payload = JSON.parse(atob(response.credential.split('.')[1]));
+      const googleEmail = payload.email;
+      const googleName = payload.name;
+      const googlePicture = payload.picture;
+
+      // Check if user exists
+      let user = users.find(u => u.email === googleEmail);
+      
+      if (!user) {
+        // Auto-register new Google user
+        const newGoogleUser = {
+          name: googleName,
+          email: googleEmail,
+          password: 'google-oauth', // Special marker for Google accounts
+          role: 'member',
+          goal: 16,
+          group: 'Team A',
+          avatar: googlePicture || '👤',
+          phone: '',
+          weeklySchedule: [1, 3, 5],
+          streakData: {
+            currentStreak: 0,
+            longestStreak: 0,
+            recoveryChances: 3,
+            lastWorkoutDate: null,
+            weeksMissed: []
+          },
+          isGoogleAccount: true
+        };
+
+        const updatedUsers = [...users, newGoogleUser];
+        setUsers(updatedUsers);
+
+        // Save to JSONBin
+        try {
+          await fetch(`${API_CONFIG.baseUrl}/${API_CONFIG.binId}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Master-Key': API_CONFIG.apiKey
+            },
+            body: JSON.stringify({
+              users: updatedUsers,
+              workouts
+            })
+          });
+        } catch (err) {
+          console.error('Failed to save to JSONBin:', err);
+        }
+
+        user = newGoogleUser;
+      }
+
+      onLogin(user);
+    } catch (error) {
+      console.error('Google login error:', error);
+      alert('Đăng nhập Google thất bại!');
+    }
+  };
+
+  // Initialize Google Sign-In button
+  useEffect(() => {
+    if (googleLoaded && window.google && !showRegister) {
+      try {
+        // Thay YOUR_GOOGLE_CLIENT_ID bằng Client ID thực của bạn
+        const GOOGLE_CLIENT_ID = '694684260774-b5h4q5oajijuofjvigivqc9fag1ba5q6.apps.googleusercontent.com';
+        
+        window.google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          callback: handleGoogleLogin,
+          auto_select: false,
+          cancel_on_tap_outside: true
+        });
+
+        const buttonDiv = document.getElementById('googleSignInButton');
+        if (buttonDiv) {
+          buttonDiv.innerHTML = ''; // Clear previous button
+          window.google.accounts.id.renderButton(
+            buttonDiv,
+            { 
+              theme: 'outline', 
+              size: 'large', 
+              width: buttonDiv.offsetWidth,
+              text: 'continue_with',
+              locale: 'vi',
+              shape: 'rectangular'
+            }
+          );
+        }
+      } catch (err) {
+        console.error('Google button render error:', err);
+        // Show fallback message
+        const buttonDiv = document.getElementById('googleSignInButton');
+        if (buttonDiv) {
+          buttonDiv.innerHTML = '<div class="text-sm text-gray-500 text-center py-3">Google Sign-In đang tải...</div>';
+        }
+      }
+    }
+  }, [googleLoaded, showRegister, users]);
 
   const handleLogin = () => {
     const user = users.find(u => u.email === loginForm.email && u.password === loginForm.password);
@@ -42,11 +162,17 @@ function LoginScreen({ onLogin, users, setUsers, workouts }) {
   };
 
   const handleRegister = async () => {
+    if (!newUser.name || !newUser.email || !newUser.password) {
+      setRegisterStatus('Vui lòng điền đầy đủ thông tin!');
+      return;
+    }
+
     const emailExists = users.some(u => u.email === newUser.email);
     if (emailExists) {
       setRegisterStatus('Email đã tồn tại!');
       return;
     }
+
     const updatedUsers = [...users, newUser];
     setUsers(updatedUsers);
 
@@ -64,7 +190,10 @@ function LoginScreen({ onLogin, users, setUsers, workouts }) {
       });
       if (res.ok) {
         setRegisterStatus('Đăng ký thành công!');
-        setShowRegister(false);
+        setTimeout(() => {
+          setShowRegister(false);
+          setRegisterStatus('');
+        }, 1500);
       } else {
         setRegisterStatus('Đăng ký thất bại!');
       }
@@ -114,6 +243,18 @@ function LoginScreen({ onLogin, users, setUsers, workouts }) {
             >
               Đăng nhập
             </button>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-300"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-white text-gray-500">Hoặc</span>
+              </div>
+            </div>
+
+            <div id="googleSignInButton" className="w-full flex justify-center"></div>
+
             <button 
               onClick={() => setShowRegister(true)} 
               className="w-full border-2 border-blue-600 text-blue-600 py-3 rounded-lg font-semibold hover:bg-blue-50 transition"
@@ -180,12 +321,15 @@ function LoginScreen({ onLogin, users, setUsers, workouts }) {
               Đăng ký
             </button>
             {registerStatus && (
-              <div className="text-center text-sm mt-2">
+              <div className={`text-center text-sm mt-2 font-medium ${registerStatus.includes('thành công') ? 'text-green-600' : 'text-red-600'}`}>
                 {registerStatus}
               </div>
             )}
             <button 
-              onClick={() => setShowRegister(false)} 
+              onClick={() => {
+                setShowRegister(false);
+                setRegisterStatus('');
+              }} 
               className="w-full border-2 border-gray-300 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-50 transition"
             >
               Quay lại
