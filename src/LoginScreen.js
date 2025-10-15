@@ -57,30 +57,31 @@ function LoginScreen({ onLogin, users, setUsers, workouts }) {
       const googleName = payload.name;
       const googlePicture = payload.picture;
 
-      // Check if user exists
+      // Check if user exists (kiểm tra cả Google account và tài khoản thường)
       let user = users.find(u => u.email === googleEmail);
       
       if (!user) {
         // Auto-register new Google user
-        const newGoogleUser = {
-          name: googleName,
-          email: googleEmail,
-          password: 'google-oauth', // Special marker for Google accounts
-          role: 'member',
-          goal: 16,
-          group: 'Team A',
-          avatar: googlePicture || '👤',
-          phone: '',
-          weeklySchedule: [1, 3, 5],
-          streakData: {
-            currentStreak: 0,
-            longestStreak: 0,
-            recoveryChances: 3,
-            lastWorkoutDate: null,
-            weeksMissed: []
-          },
-          isGoogleAccount: true
-        };
+      const newGoogleUser = {
+        name: googleName,
+        email: googleEmail,
+        password: 'google-oauth',
+        role: 'member',
+        goal: 16,
+        group: 'Team A',
+        avatar: '👤',                    // ✅ Emoji mặc định
+        googleAvatar: googlePicture,    // ✅ URL ảnh Google
+        phone: '',
+        weeklySchedule: [1, 3, 5],
+        streakData: {
+          currentStreak: 0,
+          longestStreak: 0,
+          recoveryChances: 3,
+          lastWorkoutDate: null,
+          weeksMissed: []
+        },
+        isGoogleAccount: true
+      };
 
         const updatedUsers = [...users, newGoogleUser];
         setUsers(updatedUsers);
@@ -103,6 +104,28 @@ function LoginScreen({ onLogin, users, setUsers, workouts }) {
         }
 
         user = newGoogleUser;
+      } else if (user && !user.isGoogleAccount) {
+        // Nếu tài khoản đã tồn tại nhưng không phải Google account
+        user.isGoogleAccount = true;
+        user.googleAvatar = googlePicture;  // ✅ Lưu vào googleAvatar
+        
+        const updatedUsers = users.map(u => u.email === googleEmail ? user : u);
+        setUsers(updatedUsers);
+        try {
+          await fetch(`${API_CONFIG.baseUrl}/${API_CONFIG.binId}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Master-Key': API_CONFIG.apiKey
+            },
+            body: JSON.stringify({
+              users: updatedUsers,
+              workouts
+            })
+          });
+        } catch (err) {
+          console.error('Failed to save to JSONBin:', err);
+        }
       }
 
       onLogin(user);
@@ -143,11 +166,6 @@ function LoginScreen({ onLogin, users, setUsers, workouts }) {
         }
       } catch (err) {
         console.error('Google button render error:', err);
-        // Show fallback message
-        const buttonDiv = document.getElementById('googleSignInButton');
-        if (buttonDiv) {
-          buttonDiv.innerHTML = '<div class="text-sm text-gray-500 text-center py-3">Google Sign-In đang tải...</div>';
-        }
       }
     }
   }, [googleLoaded, showRegister, users]);
@@ -253,7 +271,7 @@ function LoginScreen({ onLogin, users, setUsers, workouts }) {
               </div>
             </div>
 
-            <div id="googleSignInButton" className="w-full flex justify-center"></div>
+            <div id="googleSignInButton" className="w-full flex justify-center min-h-[44px]"></div>
 
             <button 
               onClick={() => setShowRegister(true)} 

@@ -22,12 +22,10 @@ const WEEKDAYS = [
   { id: 6, name: 'Thứ 7', short: 'T7' },
   { id: 0, name: 'Chủ nhật', short: 'CN' }
 ];
-export function calculateFlexibleStreak(currentUser, workouts, weekStartDate = null) {
-  if (!currentUser) return 0;
-
-  // Lọc các buổi tập hoàn thành
-  const userWorkouts = workouts
-    .filter(w => w.userId === currentUser.id && w.status === 'completed')
+export function calculateFlexibleStreak(currentUser, weekStartDate = null) {
+  if (!currentUser || !currentUser.workouts) return 0;
+  const userWorkouts = currentUser.workouts
+    .filter(w => w.status === 'completed')
     .map(w => {
       const d = new Date(w.date);
       d.setHours(0, 0, 0, 0);
@@ -194,17 +192,14 @@ function Leaderboard({ users, workouts, selectedMonth, statsRange, compareUsers 
     : users;
 
   const leaderboardData = selectedUsers.map(user => {
-    // Lọc buổi tập hoàn thành trong khoảng thời gian đang xem
-    const userWorkouts = workouts.filter(
+    const userWorkouts = (user.workouts || []).filter(
       w =>
-        w.userId === user.id &&
         w.date >= range.start &&
         w.date <= range.end &&
         w.status === 'completed'
     );
-
-    // ---- Dùng chung hàm calculateFlexibleStreak ----
-    const calculatedStreak = calculateFlexibleStreak(user, workouts);
+    
+    const calculatedStreak = calculateFlexibleStreak(user);
 
     return {
       id: user.id,
@@ -249,7 +244,15 @@ function Leaderboard({ users, workouts, selectedMonth, statsRange, compareUsers 
                 {getMedalEmoji(index)}
               </div>
               <div className="flex items-center gap-3">
-                <span className="text-3xl">{user.avatar}</span>
+                  {(() => {
+                    const fullUser = users.find(u => u.id === user.id);
+                    const avatarSrc = fullUser?.customAvatar || fullUser?.googleAvatar;
+                    return avatarSrc ? (
+                      <img src={avatarSrc} alt={user.name} className="w-12 h-12 rounded-full object-cover" />
+                    ) : (
+                      <span className="text-3xl">{user.avatar}</span>
+                    );
+                  })()}
                 <div>
                   <p className="font-semibold text-lg">{user.name}</p>
                   <p className="text-sm text-gray-600">Điểm: {user.score}</p>
@@ -308,7 +311,7 @@ useEffect(() => {
       const response = await fetch(`${API_CONFIG.baseUrl}/${API_CONFIG.binId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'X-Master-Key': API_CONFIG.apiKey },
-        body: JSON.stringify({ workouts, users, lastUpdated: new Date().toISOString() })
+        body: JSON.stringify({ users, lastUpdated: new Date().toISOString() })
       });
       setSaveStatus(response.ok ? '✓ Đã lưu' : '✗ Lỗi');
     } catch (error) {
@@ -320,13 +323,11 @@ useEffect(() => {
 useEffect(() => {
   console.log('🔍 useEffect TRIGGERED');
   console.log('currentUser:', currentUser?.name);
-  console.log('workouts count:', workouts.length);
+  console.log('workouts count:', currentUser?.workouts?.length || 0);
 
   if (!currentUser) return;
 
-  console.log('\n🔥 === CALCULATING FLEXIBLE STREAK ===');
-
-  const streak = calculateFlexibleStreak(currentUser, workouts);
+  const streak = calculateFlexibleStreak(currentUser);
   console.log('🏆 Calculated streak:', streak);
 
   const currentStreak = currentUser.streakData?.currentStreak || 0;
@@ -360,42 +361,114 @@ useEffect(() => {
   }
 
   console.log('=== END CALCULATION ===\n');
-}, [workouts, currentUser?.id]);
+}, [currentUser?.workouts, currentUser?.id]);
 
   const handleAddWorkout = () => {
     if (!newWorkout.date) return alert('Vui lòng chọn ngày!');
     if (newWorkout.type === 'Gym' && (!newWorkout.muscleGroups || newWorkout.muscleGroups.length === 0)) return alert('Vui lòng chọn nhóm cơ!');
-    setWorkouts([...workouts, { id: Date.now(), userId: currentUser.id, ...newWorkout, muscleGroups: newWorkout.type === 'Gym' ? newWorkout.muscleGroups : [] }]);
+    
+    const newWorkoutData = { 
+      id: Date.now(), 
+      ...newWorkout, 
+      muscleGroups: newWorkout.type === 'Gym' ? newWorkout.muscleGroups : [] 
+    };
+    
+    const updatedUser = {
+      ...currentUser,
+      workouts: [...(currentUser.workouts || []), newWorkoutData]
+    };
+    
+    setCurrentUser(updatedUser);
+    setUsers(users.map(u => u.id === currentUser.id ? updatedUser : u));
     setShowAddModal(false);
-    setNewWorkout({ date: '', type: 'Gym', duration: 60, notes: '', status: 'completed', muscleGroups: [] });
-  };
-
-  const handleQuickAdd = () => {
-    if (newWorkout.type === 'Gym' && (!newWorkout.muscleGroups || newWorkout.muscleGroups.length === 0)) return alert('Vui lòng chọn nhóm cơ!');
-    setWorkouts([...workouts, { id: Date.now(), userId: currentUser.id, date: quickAddDate, type: newWorkout.type, duration: newWorkout.duration, notes: '', status: 'completed', muscleGroups: newWorkout.type === 'Gym' ? newWorkout.muscleGroups : [] }]);
-    setShowQuickAdd(false);
     setNewWorkout({ date: '', type: 'Gym', duration: 60, notes: '', status: 'completed', muscleGroups: [] });
   };
 
   const handleEditWorkout = () => {
     if (!editingWorkout) return;
-    setWorkouts(workouts.map(w => w.id === editingWorkout.id ? { ...editingWorkout } : w));
+    
+    const updatedUser = {
+      ...currentUser,
+      workouts: (currentUser.workouts || []).map(w => w.id === editingWorkout.id ? { ...editingWorkout } : w)
+    };
+    
+    setCurrentUser(updatedUser);
+    setUsers(users.map(u => u.id === currentUser.id ? updatedUser : u));
     setShowEditModal(false);
     setEditingWorkout(null);
   };
 
   const handleDeleteWorkout = (id) => {
-    if (window.confirm('Xóa buổi tập này?')) setWorkouts(workouts.filter(w => w.id !== id));
+    if (window.confirm('Xóa buổi tập này?')) {
+      const updatedUser = {
+        ...currentUser,
+        workouts: (currentUser.workouts || []).filter(w => w.id !== id)
+      };
+      
+      setCurrentUser(updatedUser);
+      setUsers(users.map(u => u.id === currentUser.id ? updatedUser : u));
+    }
   };
-
+  const handleAvatarUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    // Kiểm tra file
+    if (!file.type.startsWith('image/')) {
+      alert('Vui lòng chọn file ảnh!');
+      return;
+    }
+    
+    if (file.size > 2 * 1024 * 1024) { // 2MB
+      alert('Ảnh quá lớn! Vui lòng chọn ảnh dưới 2MB');
+      return;
+    }
+    
+    // Đọc file và chuyển sang base64
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setProfileEdit({...profileEdit, customAvatar: reader.result});
+    };
+    reader.readAsDataURL(file);
+  };
   const handleProfileUpdate = () => {
-    const updatedUser = { ...currentUser, ...profileEdit };
+    const updatedUser = { 
+      ...currentUser, 
+      name: profileEdit.name,
+      phone: profileEdit.phone,
+      goal: profileEdit.goal,
+      avatar: profileEdit.customAvatar ? '👤' : profileEdit.avatar, // Nếu có ảnh custom thì avatar = emoji mặc định
+      customAvatar: profileEdit.customAvatar || currentUser.customAvatar, // Lưu ảnh custom
+      weeklySchedule: profileEdit.weeklySchedule
+    };
     setCurrentUser(updatedUser);
     setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u));
     setShowProfileEdit(false);
     alert('✓ Đã cập nhật!');
   };
-
+  const handleQuickAdd = () => {
+    if (newWorkout.type === 'Gym' && (!newWorkout.muscleGroups || newWorkout.muscleGroups.length === 0)) return alert('Vui lòng chọn nhóm cơ!');
+    
+    const newWorkoutData = { 
+      id: Date.now(), 
+      date: quickAddDate, 
+      type: newWorkout.type, 
+      duration: newWorkout.duration, 
+      notes: '', 
+      status: 'completed', 
+      muscleGroups: newWorkout.type === 'Gym' ? newWorkout.muscleGroups : [] 
+    };
+    
+    const updatedUser = {
+      ...currentUser,
+      workouts: [...(currentUser.workouts || []), newWorkoutData]
+    };
+    
+    setCurrentUser(updatedUser);
+    setUsers(users.map(u => u.id === currentUser.id ? updatedUser : u));
+    setShowQuickAdd(false);
+    setNewWorkout({ date: '', type: 'Gym', duration: 60, notes: '', status: 'completed', muscleGroups: [] });
+  };
   const toggleMuscleGroup = (group) => {
     if (newWorkout.type === 'Cardio') return;
     const current = newWorkout.muscleGroups || [];
@@ -423,12 +496,11 @@ useEffect(() => {
     if (!currentUser) return { completed: 0, missed: 0, percentage: 0, typeCount: {}, muscleCount: {}, rangeWorkouts: [] };
     const range = getDateRange();
     
-    // Tính số tháng giữa 2 khoảng
     const [yearStart, monthStart] = selectedMonth.split('-').map(Number);
     const [yearEnd, monthEnd] = statsRange.split('-').map(Number);
     const monthsDiff = (yearEnd - yearStart) * 12 + (monthEnd - monthStart) + 1;
     
-    const rangeWorkouts = workouts.filter(w => w.userId === currentUser.id && w.date >= range.start && w.date <= range.end);
+    const rangeWorkouts = (currentUser.workouts || []).filter(w => w.date >= range.start && w.date <= range.end);
     const completed = rangeWorkouts.filter(w => w.status === 'completed').length;
     const percentage = Math.round((completed / (currentUser.goal * monthsDiff)) * 100);
     const typeCount = {}, muscleCount = {};
@@ -439,20 +511,20 @@ useEffect(() => {
       }
     });
     return { completed, percentage, typeCount, muscleCount, rangeWorkouts };
-  }, [workouts, users, selectedMonth, statsRange, compareUsers]);
+}, [currentUser?.workouts, selectedMonth, statsRange]);
 
   const weekProgress = useMemo(() => {
     if (!currentUser) return { completed: [], remaining: [], progress: 0, scheduledDays: [] };
     const today = new Date();
     const startOfWeek = new Date(today);
     startOfWeek.setDate(today.getDate() - today.getDay() + (today.getDay() === 0 ? -6 : 1));
-    const weekWorkouts = workouts.filter(w => w.userId === currentUser.id && w.date >= startOfWeek.toISOString().split('T')[0] && w.date <= today.toISOString().split('T')[0] && w.status === 'completed');
+    const weekWorkouts = (currentUser.workouts || []).filter(w => w.date >= startOfWeek.toISOString().split('T')[0] && w.date <= today.toISOString().split('T')[0] && w.status === 'completed');
     const scheduledDays = currentUser.weeklySchedule || [1, 3, 5];
     const completedDays = weekWorkouts.map(w => new Date(w.date).getDay());
     const completed = scheduledDays.filter(day => completedDays.includes(day));
     const progress = Math.round((completed.length / scheduledDays.length) * 100);
     return { completed, progress, scheduledDays };
-  }, [workouts, currentUser]);
+  }, [currentUser?.workouts, currentUser?.weeklySchedule]);
 
   const chartData = useMemo(() => {
     if (!currentUser) return [];
@@ -464,11 +536,11 @@ useEffect(() => {
       const weekStart = d.toISOString().split('T')[0];
       const weekEnd = new Date(d);
       weekEnd.setDate(d.getDate() + 6);
-      const weekWorkouts = workouts.filter(w => w.userId === currentUser.id && w.date >= weekStart && w.date <= weekEnd.toISOString().split('T')[0] && w.status === 'completed');
+    const weekWorkouts = (currentUser.workouts || []).filter(w => w.date >= weekStart && w.date <= weekEnd.toISOString().split('T')[0] && w.status === 'completed');
       data.push({ week: `${d.getDate()}/${d.getMonth() + 1}`, workouts: weekWorkouts.length, duration: weekWorkouts.reduce((sum, w) => sum + (w.duration || 0), 0) });
     }
     return data;
-  }, [workouts, currentUser, selectedMonth, statsRange]);
+  }, [currentUser?.workouts, selectedMonth, statsRange]);
 const comparisonStats = useMemo(() => {
   const [yearStart, monthStart] = selectedMonth.split('-').map(Number);
   const [yearEnd, monthEnd] = statsRange.split('-').map(Number);
@@ -479,14 +551,13 @@ const comparisonStats = useMemo(() => {
   
   const selectedUsers = compareUsers.length > 0 ? compareUsers : users.map(u => u.id);
   
-  return selectedUsers.map(userId => {
-    const user = users.find(u => u.id === userId);
-    const userWorkouts = workouts.filter(w => 
-      w.userId === userId && 
-      w.date >= start && 
-      w.date <= end && 
-      w.status === 'completed'
-    );
+    return selectedUsers.map(userId => {
+      const user = users.find(u => u.id === userId);
+      const userWorkouts = (user?.workouts || []).filter(w => 
+        w.date >= start && 
+        w.date <= end && 
+        w.status === 'completed'
+      );
     
     return { 
       name: user?.name || 'Unknown', 
@@ -495,7 +566,7 @@ const comparisonStats = useMemo(() => {
       avatar: user?.avatar || '👤' 
     };
   });
-}, [workouts, users, selectedMonth, statsRange, compareUsers]);
+}, [users, selectedMonth, statsRange, compareUsers]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -518,7 +589,17 @@ const comparisonStats = useMemo(() => {
                   <p className="text-sm font-medium">{currentUser.name}</p>
                   <p className="text-xs text-gray-500">{currentUser.role}</p>
                 </div>
-                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-2xl">{currentUser.avatar}</div>
+                  {currentUser.customAvatar || currentUser.googleAvatar ? (
+                    <img 
+                      src={currentUser.customAvatar || currentUser.googleAvatar} 
+                      alt={currentUser.name} 
+                      className="w-10 h-10 rounded-full object-cover border-2 border-blue-200" 
+                    />
+                  ) : (
+                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-2xl">
+                      {currentUser.avatar}
+                    </div>
+                  )}
                 <button onClick={onLogout} className="p-2 hover:bg-gray-100 rounded-lg transition">
                   <LogOut className="w-5 h-5 text-gray-600" />
                 </button>
@@ -685,13 +766,33 @@ const comparisonStats = useMemo(() => {
           <div className="space-y-6">
             <div className="bg-white rounded-xl shadow-sm border p-6">
               <div className="flex items-center gap-6 mb-6">
-                <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-5xl">{currentUser.avatar}</div>
+                    {currentUser.customAvatar || currentUser.googleAvatar ? (
+                      <img 
+                        src={currentUser.customAvatar || currentUser.googleAvatar} 
+                        alt={currentUser.name} 
+                        className="w-24 h-24 rounded-full object-cover border-4 border-blue-500" 
+                      />
+                    ) : (
+                      <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-5xl">
+                        {currentUser.avatar}
+                      </div>
+                    )}
                 <div className="flex-1">
                   <h2 className="text-2xl font-bold">{currentUser.name}</h2>
                   <p className="text-gray-600">{currentUser.email}</p>
                   <p className="text-sm text-gray-500 mt-1">Mục tiêu: {currentUser.goal} buổi/tháng</p>
                 </div>
-                <button onClick={() => { setProfileEdit({ name: currentUser.name, phone: currentUser.phone || '', goal: currentUser.goal, avatar: currentUser.avatar, weeklySchedule: currentUser.weeklySchedule || [1, 3, 5] }); setShowProfileEdit(true); }}
+                <button onClick={() => { 
+                      setProfileEdit({ 
+                        name: currentUser.name, 
+                        phone: currentUser.phone || '', 
+                        goal: currentUser.goal, 
+                        avatar: currentUser.avatar, 
+                        customAvatar: currentUser.customAvatar || null, // Thêm dòng này
+                        weeklySchedule: currentUser.weeklySchedule || [1, 3, 5] 
+                      }); 
+                      setShowProfileEdit(true); 
+                    }}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 transition">
                   <Edit2 className="w-4 h-4" />Chỉnh sửa
                 </button>
@@ -765,19 +866,19 @@ const comparisonStats = useMemo(() => {
               <h3 className="text-lg font-semibold mb-4">Thống Kê Cá Nhân</h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="text-center p-4 bg-green-50 rounded-lg">
-                  <p className="text-2xl font-bold text-green-600">{workouts.filter(w => w.userId === currentUser.id && w.status === 'completed').length}</p>
+                  <p className="text-2xl font-bold text-green-600">{(currentUser.workouts || []).filter(w => w.status === 'completed').length}</p>
                   <p className="text-sm text-gray-600 mt-1">Tổng buổi tập</p>
                 </div>
                 <div className="text-center p-4 bg-blue-50 rounded-lg">
-                  <p className="text-2xl font-bold text-blue-600">{Math.round(workouts.filter(w => w.userId === currentUser.id).reduce((sum, w) => sum + (w.duration || 0), 0) / 60)}</p>
+                  <p className="text-2xl font-bold text-blue-600">{Math.round((currentUser.workouts || []).reduce((sum, w) => sum + (w.duration || 0), 0) / 60)}</p>
                   <p className="text-sm text-gray-600 mt-1">Giờ tập luyện</p>
                 </div>
-                <div className="text-center p-4 bg-purple-50 rounded-lg">
-                  <p className="text-2xl font-bold text-purple-600">{new Set(workouts.filter(w => w.userId === currentUser.id).map(w => w.date)).size}</p>
-                  <p className="text-sm text-gray-600 mt-1">Ngày khác nhau</p>
-                </div>
+                  <div className="text-center p-4 bg-purple-50 rounded-lg">
+                    <p className="text-2xl font-bold text-purple-600">{new Set((currentUser.workouts || []).map(w => w.date)).size}</p>
+                    <p className="text-sm text-gray-600 mt-1">Ngày khác nhau</p>
+                  </div>
                 <div className="text-center p-4 bg-orange-50 rounded-lg">
-                  <p className="text-2xl font-bold text-orange-600">{new Set(workouts.filter(w => w.userId === currentUser.id).flatMap(w => w.muscleGroups || [])).size}</p>
+                  <p className="text-2xl font-bold text-orange-600">{new Set((currentUser.workouts || []).flatMap(w => w.muscleGroups || [])).size}</p>
                   <p className="text-sm text-gray-600 mt-1">Nhóm cơ đã tập</p>
                 </div>
               </div>
@@ -799,10 +900,10 @@ const comparisonStats = useMemo(() => {
             </div>
           </div>
 
-          <CalendarGrid 
-            selectedMonth={selectedMonth}
-            workouts={workouts.filter(w => w.userId === currentUser.id)}
-            onDateClick={(date) => {
+            <CalendarGrid 
+              selectedMonth={selectedMonth}
+              workouts={currentUser.workouts || []}
+              onDateClick={(date) => {
               setQuickAddDate(date);
               setShowQuickAdd(true);
             }}
@@ -903,7 +1004,6 @@ const comparisonStats = useMemo(() => {
 
           <Leaderboard 
             users={users}
-            workouts={workouts}
             selectedMonth={selectedMonth}
             statsRange={statsRange}
             compareUsers={compareUsers}
@@ -975,11 +1075,11 @@ const comparisonStats = useMemo(() => {
                   </div>
                 </div>
               )}
-              {workouts.filter(w => w.userId === currentUser.id && w.date === quickAddDate).length > 0 && (
-                <div className="border-t pt-4">
-                  <h4 className="font-medium mb-2">Buổi tập đã có:</h4>
-                  <div className="space-y-2">
-                    {workouts.filter(w => w.userId === currentUser.id && w.date === quickAddDate).map(w => (
+                {(currentUser.workouts || []).filter(w => w.date === quickAddDate).length > 0 && (
+                  <div className="border-t pt-4">
+                    <h4 className="font-medium mb-2">Buổi tập đã có:</h4>
+                    <div className="space-y-2">
+                      {(currentUser.workouts || []).filter(w => w.date === quickAddDate).map(w => (
                       <div key={w.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                         <div>
                           <p className="font-medium text-sm">{w.type}</p>
@@ -1063,14 +1163,70 @@ const comparisonStats = useMemo(() => {
                 <label className="block text-sm font-medium mb-2">Mục tiêu tháng (buổi)</label>
                 <input type="number" value={profileEdit.goal} onChange={(e) => setProfileEdit({...profileEdit, goal: parseInt(e.target.value)})} placeholder="Mục tiêu tháng" className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none" />
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Avatar</label>
-                <div className="grid grid-cols-7 gap-2">
-                  {avatarOptions.map(av => (
-                    <button key={av} type="button" onClick={() => setProfileEdit({...profileEdit, avatar: av})} className={`text-2xl p-2 rounded-lg border-2 transition ${profileEdit.avatar === av ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}`}>{av}</button>
-                  ))}
+                <div>
+                  <label className="block text-sm font-medium mb-2">Avatar</label>
+                  
+                  {/* Preview ảnh hiện tại */}
+                  <div className="mb-4 flex items-center gap-4">
+                    <div className="text-sm text-gray-600">Ảnh hiện tại:</div>
+                    {profileEdit.customAvatar || currentUser.customAvatar || currentUser.googleAvatar ? (
+                      <img 
+                        src={profileEdit.customAvatar || currentUser.customAvatar || currentUser.googleAvatar} 
+                        alt="Current avatar" 
+                        className="w-16 h-16 rounded-full object-cover border-2 border-gray-300"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-3xl">
+                        {profileEdit.avatar}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Upload ảnh mới */}
+                  <div className="mb-4">
+                    <label className="block w-full">
+                      <div className="px-4 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg cursor-pointer hover:from-blue-600 hover:to-purple-600 transition text-center font-medium">
+                        📷 Tải ảnh lên (tối đa 2MB)
+                      </div>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={handleAvatarUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+
+                  {/* Nút xóa ảnh custom */}
+                  {(profileEdit.customAvatar || currentUser.customAvatar) && (
+                    <button
+                      type="button"
+                      onClick={() => setProfileEdit({...profileEdit, customAvatar: null})}
+                      className="w-full mb-4 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
+                    >
+                      🗑️ Xóa ảnh đã tải lên
+                    </button>
+                  )}
+
+                  {/* Chọn emoji */}
+                  <div className="text-sm text-gray-600 mb-2">Hoặc chọn emoji:</div>
+                  <div className="grid grid-cols-7 gap-2">
+                    {avatarOptions.map(av => (
+                      <button 
+                        key={av} 
+                        type="button" 
+                        onClick={() => setProfileEdit({...profileEdit, avatar: av, customAvatar: null})} 
+                        className={`text-2xl p-2 rounded-lg border-2 transition ${
+                          !profileEdit.customAvatar && !currentUser.customAvatar && profileEdit.avatar === av 
+                            ? 'border-blue-600 bg-blue-50' 
+                            : 'border-gray-300 hover:border-gray-400'
+                        }`}
+                      >
+                        {av}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
               <div>
                 <label className="block text-sm font-medium mb-2">Lịch tập trong tuần</label>
                 <div className="grid grid-cols-4 gap-2">
@@ -1143,7 +1299,6 @@ function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
     return !!localStorage.getItem('currentUser');
   });
-  const [workouts, setWorkouts] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -1158,7 +1313,6 @@ function App() {
       if (response.ok) {
         const data = await response.json();
         if (data.record) {
-          setWorkouts(data.record.workouts || []);
           setUsers(data.record.users || []);
         }
       }
@@ -1194,13 +1348,12 @@ function App() {
       <LoginScreen
         users={users}
         setUsers={setUsers}
-        workouts={workouts}
         onLogin={handleLogin}
       />
     );
   }
 
-  return <MainApp currentUser={currentUser} setCurrentUser={setCurrentUser} users={users} setUsers={setUsers} workouts={workouts} setWorkouts={setWorkouts} onLogout={handleLogout} />;
+  return <MainApp currentUser={currentUser} setCurrentUser={setCurrentUser} users={users} setUsers={setUsers} onLogout={handleLogout} />;
 }
 
 export default App;
