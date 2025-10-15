@@ -153,7 +153,7 @@ function CalendarGrid({ selectedMonth, workouts, onDateClick }) {
                 {dayWorkouts.slice(0, 3).map((w, i) => (
                   <div key={i} className="text-center">
                     <div className="text-lg">
-                      {w.type === 'Gym' ? '💪' : w.type === 'Cardio' ? '🏃' : w.type === 'Swimming' ? '🏊' : '⚽'}
+                      {w.type === 'Gym' ? '💪' : w.type === 'Cardio' ? '🏃' : w.type === 'Swimming' ? '🏊' :w.type === 'Football'? '⚽' : '✏️'}
                     </div>
                     {w.type === 'Gym' && w.muscleGroups && w.muscleGroups.length > 0 && (
                       <div className="text-[9px] text-gray-600 leading-tight">
