@@ -297,6 +297,8 @@ function MainApp({ currentUser, setCurrentUser, users, setUsers, workouts, setWo
   const [editingWorkout, setEditingWorkout] = useState(null);
   const [showProfileEdit, setShowProfileEdit] = useState(false);
   const [showStreakInfo, setShowStreakInfo] = useState(false);
+  const [showStreakLostModal, setShowStreakLostModal] = useState(false);
+  const [lostStreakData, setLostStreakData] = useState(null);
   const [newWorkout, setNewWorkout] = useState({ date: '', type: 'Gym', duration: 60, notes: '', status: 'completed', muscleGroups: [] });
   const [profileEdit, setProfileEdit] = useState({ name: '', phone: '', goal: 16, avatar: '👤', weeklySchedule: [] });
 useEffect(() => {
@@ -340,6 +342,24 @@ useEffect(() => {
       currentUser.streakData?.longestStreak || 0
     );
 
+    // ❗ THÊM PHẦN NÀY: Phát hiện streak bị mất (từ > 0 xuống 0)
+    if (currentStreak > 1 && streak === 1) {
+      console.log('🚨 STREAK LOST! From', currentStreak, '→ 1');
+      
+      // Kiểm tra xem tháng này đã dùng recovery chưa
+      const currentMonth = new Date().toISOString().slice(0, 7);
+      const lastRecoveryMonth = currentUser.streakData?.lastRecoveryMonth;
+      const canRecover = lastRecoveryMonth !== currentMonth;
+      
+      // Hiển thị modal thông báo
+      setLostStreakData({
+        lostStreak: currentStreak,
+        canRecover: canRecover,
+        currentMonth: currentMonth
+      });
+      setShowStreakLostModal(true);
+    }
+
     const updatedUser = {
       ...currentUser,
       streakData: {
@@ -362,7 +382,6 @@ useEffect(() => {
 
   console.log('=== END CALCULATION ===\n');
 }, [currentUser?.workouts, currentUser?.id]);
-
   const handleAddWorkout = () => {
     if (!newWorkout.date) return alert('Vui lòng chọn ngày!');
     if (newWorkout.type === 'Gym' && (!newWorkout.muscleGroups || newWorkout.muscleGroups.length === 0)) return alert('Vui lòng chọn nhóm cơ!');
@@ -445,6 +464,29 @@ useEffect(() => {
     setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u));
     setShowProfileEdit(false);
     alert('✓ Đã cập nhật!');
+  };
+    const handleRecoverStreak = () => {
+    if (!lostStreakData || !lostStreakData.canRecover) return;
+    
+    const updatedUser = {
+      ...currentUser,
+      streakData: {
+        ...currentUser.streakData,
+        currentStreak: lostStreakData.lostStreak, // Khôi phục streak cũ
+        lastRecoveryMonth: lostStreakData.currentMonth, // Đánh dấu đã dùng recovery tháng này
+        recoveryUsed: true
+      }
+    };
+    
+    setCurrentUser(updatedUser);
+    setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u));
+    setShowStreakLostModal(false);
+    setLostStreakData(null);
+  };
+
+  const handleDeclineRecovery = () => {
+    setShowStreakLostModal(false);
+    setLostStreakData(null);
   };
   const handleQuickAdd = () => {
     if (newWorkout.type === 'Gym' && (!newWorkout.muscleGroups || newWorkout.muscleGroups.length === 0)) return alert('Vui lòng chọn nhóm cơ!');
@@ -665,16 +707,13 @@ const comparisonStats = useMemo(() => {
             <p className="text-orange-100 text-sm">Streak Hiện Tại</p>
             <h3 className="text-4xl font-bold mt-2">{currentUser.streakData?.currentStreak || 0}</h3>
             <p className="text-orange-100 text-xs mt-1">ngày liên tiếp</p>
-            <div className="mt-3 flex gap-1">
-              {[...Array(3)].map((_, i) => (
-                <div 
-                  key={i}
-                  className={`flex-1 h-1.5 rounded-full ${
-                    i < (currentUser.streakData?.recoveryChances || 3) ? 'bg-white' : 'bg-white/30'
-                  }`}
-                />
-              ))}
-            </div>
+          <div className="mt-3 flex gap-1">
+            <div 
+              className={`flex-1 h-1.5 rounded-full ${
+                currentUser.streakData?.lastRecoveryMonth === new Date().toISOString().slice(0, 7) ? 'bg-white/30' : 'bg-white'
+              }`}
+            />
+          </div>
             <p className="text-orange-100 text-xs mt-2">Kỷ lục: {currentUser.streakData?.longestStreak || 0} ngày</p>
           </div>
 
@@ -832,14 +871,11 @@ const comparisonStats = useMemo(() => {
             <h3 className="text-4xl font-bold mt-1">{currentUser.streakData?.currentStreak || 0}</h3>
             <p className="text-orange-100 text-xs mt-1">ngày liên tiếp</p>
             <div className="mt-3 flex gap-1">
-              {[...Array(3)].map((_, i) => (
-                <div 
-                  key={i}
-                  className={`flex-1 h-1.5 rounded-full ${
-                    i < (currentUser.streakData?.recoveryChances || 3) ? 'bg-white' : 'bg-white/30'
-                  }`}
-                />
-              ))}
+              <div 
+                className={`flex-1 h-1.5 rounded-full ${
+                  currentUser.streakData?.lastRecoveryMonth === new Date().toISOString().slice(0, 7) ? 'bg-white/30' : 'bg-white'
+                }`}
+              />
             </div>
           </div>
             <div className="bg-gradient-to-br from-yellow-400 to-orange-400 rounded-xl p-6 text-white shadow-lg">
@@ -851,8 +887,10 @@ const comparisonStats = useMemo(() => {
             <div className="bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl p-6 text-white shadow-lg">
               <Target className="w-12 h-12 mb-3" />
               <p className="text-purple-100 text-sm">Cơ Hội Khôi Phục</p>
-              <h3 className="text-4xl font-bold mt-1">{currentUser.streakData?.recoveryChances || 3}</h3>
-              <p className="text-purple-100 text-xs mt-1">/ 3 lần trong tháng</p>
+              <h3 className="text-4xl font-bold mt-1">
+                {currentUser.streakData?.lastRecoveryMonth === new Date().toISOString().slice(0, 7) ? '0' : '1'}
+              </h3>
+              <p className="text-purple-100 text-xs mt-1">/ 1 lần trong tháng</p>
             </div>
             <div className="bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl p-6 text-white shadow-lg">
               <Calendar className="w-12 h-12 mb-3" />
@@ -1286,6 +1324,65 @@ const comparisonStats = useMemo(() => {
           </div>
         </div>
       )}
+      {/* STREAK LOST MODAL */}
+      {showStreakLostModal && lostStreakData && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl">
+            <div className="text-center">
+              <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-5xl">💔</span>
+              </div>
+              <h3 className="text-2xl font-bold mb-2 text-red-600">Streak Đã Bị Mất!</h3>
+              <p className="text-gray-600 mb-4">
+                Chuỗi {lostStreakData.lostStreak} ngày liên tiếp của bạn đã bị gián đoạn
+              </p>
+            </div>
+
+            {lostStreakData.canRecover ? (
+              <div className="bg-purple-50 border-2 border-purple-300 rounded-lg p-4 mb-4">
+                <h4 className="font-semibold text-purple-800 mb-2 flex items-center gap-2">
+                  <span>💎</span> Bạn có cơ hội khôi phục!
+                </h4>
+                <p className="text-sm text-purple-700">
+                  Mỗi tháng bạn có 1 lần khôi phục streak miễn phí. Bạn có muốn sử dụng ngay không?
+                </p>
+              </div>
+            ) : (
+              <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-4 mb-4">
+                <p className="text-sm text-gray-700">
+                  ❌ Bạn đã sử dụng cơ hội khôi phục trong tháng này rồi. Hãy cố gắng giữ streak trong tháng sau!
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              {lostStreakData.canRecover ? (
+                <>
+                  <button 
+                    onClick={handleRecoverStreak}
+                    className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition font-semibold"
+                  >
+                    ✨ Khôi phục streak ({lostStreakData.lostStreak} ngày)
+                  </button>
+                  <button 
+                    onClick={handleDeclineRecovery}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition"
+                  >
+                    Không, bắt đầu lại từ đầu
+                  </button>
+                </>
+              ) : (
+                <button 
+                  onClick={handleDeclineRecovery}
+                  className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                >
+                  Đóng
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1314,6 +1411,17 @@ function App() {
         const data = await response.json();
         if (data.record) {
           setUsers(data.record.users || []);
+          
+          // Cập nhật currentUser nếu đang đăng nhập
+          const savedUser = localStorage.getItem('currentUser');
+          if (savedUser) {
+            const parsedUser = JSON.parse(savedUser);
+            const updatedCurrentUser = data.record.users.find(u => u.id === parsedUser.id);
+            if (updatedCurrentUser) {
+              setCurrentUser(updatedCurrentUser);
+              localStorage.setItem('currentUser', JSON.stringify(updatedCurrentUser));
+            }
+          }
         }
       }
     } catch (error) {
