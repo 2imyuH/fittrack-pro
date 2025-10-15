@@ -1,13 +1,13 @@
 {
   "files": {
     "main.css": "/fittrack-pro/static/css/main.d16823c2.css",
-    "main.js": "/fittrack-pro/static/js/main.6601ce8c.js",
+    "main.js": "/fittrack-pro/static/js/main.dc0f219b.js",
     "index.html": "/fittrack-pro/index.html",
     "main.d16823c2.css.map": "/fittrack-pro/static/css/main.d16823c2.css.map",
-    "main.6601ce8c.js.map": "/fittrack-pro/static/js/main.6601ce8c.js.map"
+    "main.dc0f219b.js.map": "/fittrack-pro/static/js/main.dc0f219b.js.map"
   },
   "entrypoints": [
     "static/css/main.d16823c2.css",
-    "static/js/main.6601ce8c.js"
+    "static/js/main.dc0f219b.js"
   ]
 }

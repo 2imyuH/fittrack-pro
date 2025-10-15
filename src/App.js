@@ -774,7 +774,7 @@ const comparisonStats = useMemo(() => {
               <div key={workout.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <span className="text-xl">{workout.type === 'Gym' ? '💪' : workout.type === 'Cardio' ? '🏃' : workout.type === 'Swimming' ? '🏊' : '⚽'}</span>
+                    <span className="text-xl">{workout.type === 'Gym' ? '💪' : workout.type === 'Cardio' ? '🏃' : workout.type === 'Swimming' ? '🏊': workout.type === 'Football' ? '⚽':  '✏️'}</span>
                   </div>
                   <div>
                     <p className="font-medium">{workout.type}</p>
