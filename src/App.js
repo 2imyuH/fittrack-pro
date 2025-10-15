@@ -9,7 +9,7 @@ const API_CONFIG = {
   baseUrl: 'https://api.jsonbin.io/v3/b'
 };
 
-const workoutTypes = ['Gym', 'Cardio', 'Swimming','Football'];
+const workoutTypes = ['Gym', 'Cardio', 'Swimming','Football','Học Tập'];
 const muscleGroups = ['Ngực', 'Lưng', 'Vai', 'Tay Trước', 'Tay Sau', 'Chân', 'Bụng', 'Mông'];
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#ec4899', '#14b8a6'];
 const avatarOptions = ['👨', '👩', '👨‍💼', '👩‍💼', '🧑', '👨‍🎓', '👩‍🎓', '🧔', '👴', '👵', '💪', '🏃', '🚴', '🏋️'];
