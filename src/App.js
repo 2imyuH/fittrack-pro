@@ -22,8 +22,14 @@ const WEEKDAYS = [
   { id: 6, name: 'Thứ 7', short: 'T7' },
   { id: 0, name: 'Chủ nhật', short: 'CN' }
 ];
-export function calculateFlexibleStreak(currentUser, weekStartDate = null) {
+export function calculateFlexibleStreak(currentUser) {
   if (!currentUser || !currentUser.workouts) return 0;
+  
+  // Ngày bắt đầu tính streak CỐ ĐỊNH
+  const STREAK_START_DATE = new Date('2025-10-13');
+  STREAK_START_DATE.setHours(0, 0, 0, 0);
+  
+  // Lọc và chuẩn hóa workouts
   const userWorkouts = currentUser.workouts
     .filter(w => w.status === 'completed')
     .map(w => {
@@ -31,6 +37,7 @@ export function calculateFlexibleStreak(currentUser, weekStartDate = null) {
       d.setHours(0, 0, 0, 0);
       return d;
     })
+    .filter(d => d >= STREAK_START_DATE) // ✅ Chỉ lấy workout TỪ 13/10/2025 trở đi
     .sort((a, b) => a - b);
 
   if (userWorkouts.length === 0) return 0;
@@ -38,23 +45,16 @@ export function calculateFlexibleStreak(currentUser, weekStartDate = null) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const scheduledDays = currentUser.weeklySchedule || [1, 3, 5];
+  const scheduledDays = currentUser.weeklySchedule || [1, 3, 5]; // Thứ 2, 4, 6
   const workoutSet = new Set(userWorkouts.map(d => d.toISOString().split('T')[0]));
-
-  // Xác định tuần hiện tại hoặc từ ngày bắt đầu do người dùng chọn
-  const startOfWeek = weekStartDate
-    ? new Date(weekStartDate)
-    : new Date(today.getFullYear(), today.getMonth(), today.getDate() - today.getDay() + 1);
-  startOfWeek.setHours(0, 0, 0, 0);
 
   let streak = 0;
   
-  // Tìm ngày tập gần nhất để biết "hiện tại" đến đâu
-  const lastWorkoutDate = userWorkouts.length > 0 
-    ? userWorkouts[userWorkouts.length - 1] 
-    : startOfWeek;
+  // Tìm ngày tập gần nhất để biết đến đâu cần kiểm tra
+  const lastWorkoutDate = userWorkouts[userWorkouts.length - 1];
 
-  const dayCursor = new Date(startOfWeek);
+  // Bắt đầu quét từ 13/10/2025
+  const dayCursor = new Date(STREAK_START_DATE);
 
   while (dayCursor <= lastWorkoutDate) {
     const dayStr = dayCursor.toISOString().split('T')[0];
@@ -75,7 +75,6 @@ export function calculateFlexibleStreak(currentUser, weekStartDate = null) {
 
   return streak;
 }
-
 
 // Hàm phụ tính số tuần trong năm
 function getWeekNumber(date) {
@@ -450,21 +449,23 @@ useEffect(() => {
     };
     reader.readAsDataURL(file);
   };
-  const handleProfileUpdate = () => {
-    const updatedUser = { 
-      ...currentUser, 
-      name: profileEdit.name,
-      phone: profileEdit.phone,
-      goal: profileEdit.goal,
-      avatar: profileEdit.customAvatar ? '👤' : profileEdit.avatar, // Nếu có ảnh custom thì avatar = emoji mặc định
-      customAvatar: profileEdit.customAvatar || currentUser.customAvatar, // Lưu ảnh custom
-      weeklySchedule: profileEdit.weeklySchedule
+    const handleProfileUpdate = () => {
+      const updatedUser = { 
+        ...currentUser, 
+        name: profileEdit.name,
+        phone: profileEdit.phone,
+        goal: profileEdit.goal,
+        avatar: profileEdit.customAvatar ? '👤' : profileEdit.avatar,
+        customAvatar: profileEdit.customAvatar || currentUser.customAvatar,
+        weeklySchedule: profileEdit.weeklySchedule,
+        // ✅ THÊM DÒNG NÀY
+        googleName: currentUser.googleName || (currentUser.isGoogleAccount ? currentUser.name : null)
+      };
+      setCurrentUser(updatedUser);
+      setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u));
+      setShowProfileEdit(false);
+      alert('✓ Đã cập nhật!');
     };
-    setCurrentUser(updatedUser);
-    setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u));
-    setShowProfileEdit(false);
-    alert('✓ Đã cập nhật!');
-  };
     const handleRecoverStreak = () => {
     if (!lostStreakData || !lostStreakData.canRecover) return;
     
