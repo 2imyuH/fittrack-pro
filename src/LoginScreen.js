@@ -52,6 +52,7 @@ function LoginScreen({ onLogin, users, setUsers, workouts }) {
   }, []);
 
   // ✅ FIX: Hàm xử lý đăng nhập Google
+// ✅ Hàm xử lý đăng nhập Google
   const handleGoogleLogin = async (response) => {
     try {
       const payload = JSON.parse(atob(response.credential.split('.')[1]));
@@ -59,9 +60,23 @@ function LoginScreen({ onLogin, users, setUsers, workouts }) {
       const googleName = payload.name;
       const googlePicture = payload.picture;
 
-      // Tìm user hiện tại
-      let existingUser = users.find(u => u.email === googleEmail);
-      let updatedUsers = [...users];
+      // ✅ LOAD DỮ LIỆU MỚI NHẤT TỪ API TRƯỚC
+      let latestUsers = users;
+      try {
+        const apiResponse = await fetch(`${API_CONFIG.baseUrl}/${API_CONFIG.binId}/latest`, {
+          headers: { 'X-Master-Key': API_CONFIG.apiKey }
+        });
+        if (apiResponse.ok) {
+          const data = await apiResponse.json();
+          latestUsers = data.record?.users || users;
+        }
+      } catch (err) {
+        console.warn('Could not fetch latest data, using local state:', err);
+      }
+
+      // Tìm user hiện tại (từ dữ liệu mới nhất)
+      let existingUser = latestUsers.find(u => u.email === googleEmail);
+      let updatedUsers = [...latestUsers];
       let currentUser;
 
       if (!existingUser) {
@@ -93,39 +108,31 @@ function LoginScreen({ onLogin, users, setUsers, workouts }) {
 
         updatedUsers.push(newGoogleUser);
         currentUser = newGoogleUser;
+
+        // ✅ CẬP NHẬT STATE VÀ LƯU API CHỈ KHI TẠO USER MỚI
+        setUsers(updatedUsers);
+
+        try {
+          await fetch(`${API_CONFIG.baseUrl}/${API_CONFIG.binId}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Master-Key': API_CONFIG.apiKey
+            },
+            body: JSON.stringify({
+              users: updatedUsers,
+              lastUpdated: new Date().toISOString()
+            })
+          });
+        } catch (err) {
+          console.error('Failed to save to JSONBin:', err);
+        }
       } else {
-        // ✅ User đã tồn tại -> DÙNG DỮ LIỆU CŨ, chỉ cập nhật ảnh avatar mới nhất
-        const updatedExistingUser = {
-          ...existingUser,
-          googleAvatar: googlePicture // Chỉ cập nhật ảnh Google mới nhất
-        };
-        
-        updatedUsers = users.map(u => 
-          u.email === googleEmail ? updatedExistingUser : u
-        );
-        currentUser = updatedExistingUser;
+        // ✅ User đã tồn tại -> DÙNG NGUYÊN DỮ LIỆU CŨ, KHÔNG CẬP NHẬT GÌ
+        currentUser = existingUser;
       }
 
-      // ✅ LƯU TRƯỚC KHI LOGIN
-      setUsers(updatedUsers);
-
-      try {
-        await fetch(`${API_CONFIG.baseUrl}/${API_CONFIG.binId}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Master-Key': API_CONFIG.apiKey
-          },
-          body: JSON.stringify({
-            users: updatedUsers,
-            lastUpdated: new Date().toISOString()
-          })
-        });
-      } catch (err) {
-        console.error('Failed to save to JSONBin:', err);
-      }
-
-      // ✅ Gọi onLogin SAU KHI đã lưu
+      // ✅ Đăng nhập với user hiện tại
       onLogin(currentUser);
       
     } catch (error) {
