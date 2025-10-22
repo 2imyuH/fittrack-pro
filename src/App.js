@@ -22,6 +22,7 @@ const WEEKDAYS = [
   { id: 6, name: 'Thứ 7', short: 'T7' },
   { id: 0, name: 'Chủ nhật', short: 'CN' }
 ];
+
 export function calculateFlexibleStreak(currentUser) {
   if (!currentUser || !currentUser.workouts) return 0;
   
@@ -204,6 +205,8 @@ function Leaderboard({ users, workouts, selectedMonth, statsRange, compareUsers 
       id: user.id,
       name: user.name,
       avatar: user.avatar,
+      customAvatar: user.customAvatar, // ✅ Thêm dòng này
+      googleAvatar: user.googleAvatar, // ✅ Thêm dòng này
       workoutCount: userWorkouts.length,
       totalDuration: userWorkouts.reduce((sum, w) => sum + (w.duration || 0), 0),
       currentStreak: calculatedStreak,
@@ -244,8 +247,7 @@ function Leaderboard({ users, workouts, selectedMonth, statsRange, compareUsers 
               </div>
               <div className="flex items-center gap-3">
                   {(() => {
-                    const fullUser = users.find(u => u.id === user.id);
-                    const avatarSrc = fullUser?.customAvatar || fullUser?.googleAvatar;
+                    const avatarSrc = user.customAvatar || user.googleAvatar;
                     return avatarSrc ? (
                       <img src={avatarSrc} alt={user.name} className="w-12 h-12 rounded-full object-cover" />
                     ) : (
@@ -584,32 +586,40 @@ useEffect(() => {
     }
     return data;
   }, [currentUser?.workouts, selectedMonth, statsRange]);
-const comparisonStats = useMemo(() => {
-  const [yearStart, monthStart] = selectedMonth.split('-').map(Number);
-  const [yearEnd, monthEnd] = statsRange.split('-').map(Number);
-  
-  const start = `${yearStart}-${String(monthStart).padStart(2, '0')}-01`;
-  const endDate = new Date(yearEnd, monthEnd, 0);
-  const end = `${yearEnd}-${String(monthEnd).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
-  
-  const selectedUsers = compareUsers.length > 0 ? compareUsers : users.map(u => u.id);
-  
-    return selectedUsers.map(userId => {
-      const user = users.find(u => u.id === userId);
-      const userWorkouts = (user?.workouts || []).filter(w => 
-        w.date >= start && 
-        w.date <= end && 
-        w.status === 'completed'
-      );
+  const comparisonStats = useMemo(() => {
+    const [yearStart, monthStart] = selectedMonth.split('-').map(Number);
+    const [yearEnd, monthEnd] = statsRange.split('-').map(Number);
     
-    return { 
-      name: user?.name || 'Unknown', 
-      workouts: userWorkouts.length, 
-      totalDuration: userWorkouts.reduce((sum, w) => sum + (w.duration || 0), 0), 
-      avatar: user?.avatar || '👤' 
-    };
-  });
-}, [users, selectedMonth, statsRange, compareUsers]);
+    const start = `${yearStart}-${String(monthStart).padStart(2, '0')}-01`;
+    const endDate = new Date(yearEnd, monthEnd, 0);
+    const end = `${yearEnd}-${String(monthEnd).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+    
+    // ✅ FIX: Lọc trực tiếp users thay vì map qua id
+    const selectedUsers = compareUsers.length > 0 
+      ? users.filter(u => compareUsers.includes(u.id))
+      : users;
+    
+    return selectedUsers
+      .map(user => {
+        const userWorkouts = (user?.workouts || []).filter(w => 
+          w.date >= start && 
+          w.date <= end && 
+          w.status === 'completed'
+        );
+      
+        return { 
+          userId: user.id, // ✅ Thêm userId để tránh trùng
+          name: user?.name || 'Unknown', 
+          workouts: userWorkouts.length, 
+          totalDuration: userWorkouts.reduce((sum, w) => sum + (w.duration || 0), 0), 
+          avatar: user?.avatar || '👤' 
+        };
+      })
+      .filter((item, index, self) => 
+        // ✅ Loại bỏ duplicate
+        index === self.findIndex(t => t.userId === item.userId)
+      );
+  }, [users, selectedMonth, statsRange, compareUsers]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1399,7 +1409,21 @@ function App() {
   });
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-
+// Thêm vào đầu file, sau các import
+const fixEncoding = (str) => {
+  try {
+    // Kiểm tra nếu string đã bị double-encode
+    if (str.includes('Ã') || str.includes('á»')) {
+      const encoder = new TextEncoder();
+      const decoder = new TextDecoder('utf-8');
+      const bytes = encoder.encode(str);
+      return decoder.decode(new Uint8Array(bytes.map(b => b & 0xFF)));
+    }
+    return str;
+  } catch {
+    return str;
+  }
+};
   useEffect(() => {
     loadDataFromAPI();
   }, []);
@@ -1411,13 +1435,29 @@ function App() {
       if (response.ok) {
         const data = await response.json();
         if (data.record) {
-          setUsers(data.record.users || []);
+          // ✅ FIX: Tự động tạo ID cho user không có ID
+          const fixedUsers = (data.record.users || []).map((user, index) => {
+            if (!user.id) {
+              // Tạo ID dựa trên email hoặc index
+              const emailHash = user.email ? user.email.split('@')[0].length : index;
+              return {
+                ...user,
+                id: index + 2 // Bắt đầu từ 2 vì Huy đã có id = 1
+              };
+            }
+            return user;
+          });
+          
+          console.log('✅ Fixed users with IDs:', fixedUsers.map(u => ({ id: u.id, name: u.name, email: u.email })));
+          
+          setUsers(fixedUsers);
           
           // Cập nhật currentUser nếu đang đăng nhập
           const savedUser = localStorage.getItem('currentUser');
           if (savedUser) {
             const parsedUser = JSON.parse(savedUser);
-            const updatedCurrentUser = data.record.users.find(u => u.id === parsedUser.id);
+            // ✅ Tìm bằng email thay vì id (vì id có thể thay đổi)
+            const updatedCurrentUser = fixedUsers.find(u => u.email === parsedUser.email);
             if (updatedCurrentUser) {
               setCurrentUser(updatedCurrentUser);
               localStorage.setItem('currentUser', JSON.stringify(updatedCurrentUser));
